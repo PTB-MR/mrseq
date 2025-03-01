@@ -29,7 +29,7 @@ def test_seq_duration_vary_params_without_effect(system_defaults):
     """Test if sequence duration is as expected."""
     seq = create_seq(
         system=system_defaults,
-        te=10e-3,  # default None
+        te=11e-3,  # default None
         fov_xy=192e-3,  # default 128e-3
         n_readout=192,  # default 128
         slice_thickness=6e-3,  # default 8e-3
