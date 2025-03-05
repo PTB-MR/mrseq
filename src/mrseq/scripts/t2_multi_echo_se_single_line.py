@@ -69,9 +69,9 @@ def t2_multi_echo_se_single_line_kernel(
     rf180_apodization
         Apodization factor of rf refocusing pulse
     gz_spoil_duration
-        Duration of spoiler gradient (in seconds)
+        Duration of spoiler (crusher) gradient applied around 180° pulse and after readout (in seconds)
     gz_spoil_area
-        Area / zeroth gradient moment of spoiler gradient
+        Area / zeroth gradient moment of spoiler (crusher) gradient applied around 180° pulse and after readout
 
     Returns
     -------
@@ -263,7 +263,7 @@ def main(
     gx_flat_time = n_readout * adc_dwell  # flat time of readout gradient [s]
 
     # define spoiler gradient settings
-    gz_spoil_duration = 3.2e-3  # duration of spoiler gradient [s]
+    gz_spoil_duration = 0.8e-3  # duration of spoiler gradient [s]
     gz_spoil_area = 4 / slice_thickness  # area / zeroth gradient moment of spoiler gradient
 
     # define settings of rf excitation pulse
