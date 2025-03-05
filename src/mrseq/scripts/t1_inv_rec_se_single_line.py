@@ -318,7 +318,7 @@ def main(
     gx_flat_time = n_readout * adc_dwell  # flat time of readout gradient [s]
 
     # define spoiler gradient settings
-    gz_spoil_duration = 2.0e-3  # duration of spoiler gradient [s]
+    gz_spoil_duration = 0.8e-3  # duration of spoiler gradient [s]
     gz_spoil_area = 4 / slice_thickness  # area / zeroth gradient moment of spoiler gradient
 
     # define settings of rf excitation pulse
