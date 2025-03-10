@@ -32,6 +32,8 @@ def t1_inv_rec_se_single_line_kernel(
     rf180_flip_angle: float,
     rf180_bwt: float,
     rf180_apodization: float,
+    gz_spoil_duration: float,
+    gz_spoil_area: float,
 ) -> tuple[pp.Sequence, float, float]:
     """Generate a SE-based inversion recovery sequence with one inversion pulse before every readout.
 
@@ -79,6 +81,10 @@ def t1_inv_rec_se_single_line_kernel(
         Bandwidth-time product of rf refocusing pulse (Hz * seconds)
     rf180_apodization
         Apodization factor of rf refocusing pulse
+    gz_spoil_duration
+        Duration of spoiler (crusher) gradient applied around 180° pulse and after readout (in seconds)
+    gz_spoil_area
+        Area / zeroth gradient moment of spoiler (crusher) gradient applied around 180° pulse and after readout
 
     Returns
     -------
@@ -135,8 +141,8 @@ def t1_inv_rec_se_single_line_kernel(
     phase_areas = (np.arange(n_phase_encoding) - n_phase_encoding / 2) * delta_k
     k0_center_id = np.where((np.arange(n_readout) - n_readout / 2) * delta_k == 0)[0][0]
 
-    # create spoiler gradients
-    gz_spoil = pp.make_trapezoid(channel='z', area=4 / slice_thickness, system=system)
+    # spoiler along slice direction before and after 180°-SE-refocusing pulse
+    gz_spoil = pp.make_trapezoid(channel='z', system=system, area=gz_spoil_area, duration=gz_spoil_duration)
 
     # calculate minimum echo time
     min_te = (
@@ -311,6 +317,10 @@ def main(
     gx_pre_duration = 1.0e-3  # duration of readout pre-winder gradient [s]
     gx_flat_time = n_readout * adc_dwell  # flat time of readout gradient [s]
 
+    # define spoiler gradient settings
+    gz_spoil_duration = 0.8e-3  # duration of spoiler gradient [s]
+    gz_spoil_area = 4 / slice_thickness  # area / zeroth gradient moment of spoiler gradient
+
     # define settings of rf excitation pulse
     rf90_duration = 1.28e-3  # duration of the rf excitation pulse [s]
     rf90_flip_angle = 90  # flip angle of rf excitation pulse [°]
@@ -345,6 +355,8 @@ def main(
         rf180_flip_angle=rf180_flip_angle,
         rf180_bwt=rf180_bwt,
         rf180_apodization=rf180_apodization,
+        gz_spoil_duration=gz_spoil_duration,
+        gz_spoil_area=gz_spoil_area,
     )
 
     # check timing of the sequence
