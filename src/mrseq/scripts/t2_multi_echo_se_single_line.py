@@ -1,4 +1,4 @@
-"""Gold standard SE-based multi-echo sequence."""
+"""Gold standard SE-based multi-echo sequence for T2 mapping."""
 
 from pathlib import Path
 
@@ -30,7 +30,7 @@ def t2_multi_echo_se_single_line_kernel(
     gz_spoil_duration: float,
     gz_spoil_area: float,
 ) -> tuple[pp.Sequence, float]:
-    """Generate a SE-based inversion recovery sequence with one inversion pulse before every readout.
+    """Generate a SE-based multi-echo sequence for T2 mapping.
 
     Parameters
     ----------
