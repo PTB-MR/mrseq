@@ -98,7 +98,7 @@ def t1rho_se_single_line_kernel(
     # create PyPulseq Sequence object and set system limits
     seq = pp.Sequence(system=system)
 
-    # create slice selection 90° and 180° pulse and gradient
+    # create slice selective 90° RF pulse and gradient
     rf90, gz90, _ = pp.make_sinc_pulse(  # type: ignore
         flip_angle=rf90_flip_angle / 180 * np.pi,
         duration=rf90_duration,
