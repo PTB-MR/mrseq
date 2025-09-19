@@ -1,22 +1,29 @@
-"""Gold standard SE-based multi-echo sequence for T2 mapping."""
+"""Gold standard SE-based sequence for T1rho mapping with one preparation pulse before every readout."""
 
 from pathlib import Path
 
 import numpy as np
 import pypulseq as pp
 
+from mrseq.preparations import add_t1rho_prep
 from mrseq.utils import round_to_raster
 from mrseq.utils import sys_defaults
 
 
-def t2_multi_echo_se_single_line_kernel(
+def t1rho_se_single_line_kernel(
     system: pp.Opts,
-    echo_times: np.ndarray,
+    spin_lock_times: np.ndarray,
+    te: float | None,
     tr: float,
     fov_xy: float,
     n_readout: int,
     n_phase_encoding: int,
     slice_thickness: float,
+    rf_spin_lock_duration: float,
+    spin_lock_amplitude: float,
+    add_spin_lock_spoiler: bool,
+    spin_lock_spoiler_ramp_time: float,
+    spin_lock_spoiler_flat_time: float,
     gx_pre_duration: float,
     gx_flat_time: float,
     rf90_duration: float,
@@ -27,17 +34,17 @@ def t2_multi_echo_se_single_line_kernel(
     rf180_flip_angle: float,
     rf180_bwt: float,
     rf180_apodization: float,
-    gz_spoil_duration: float,
-    gz_spoil_area: float,
-) -> tuple[pp.Sequence, float]:
-    """Generate a SE-based multi-echo sequence for T2 mapping.
+) -> tuple[pp.Sequence, float, float]:
+    """Generate a SE-based sequence for T1rho mapping with one preparation pulse before every readout.
 
     Parameters
     ----------
     system
         PyPulseq system limits object.
-    echo_times
-        Array of echo times (in seconds).
+    spin_lock_times
+        Array of spin lock times (in seconds).
+    te
+        Desired echo time (TE) (in seconds). Minimum echo time is used if set to None.
     tr
         Desired repetition time (TR) (in seconds).
     fov_xy
@@ -48,6 +55,16 @@ def t2_multi_echo_se_single_line_kernel(
         Number of phase encoding steps.
     slice_thickness
         Slice thickness of the 2D slice (in meters).
+    rf_spin_lock_duration
+        Duration of 90° tip-down/tip-up pulses for spin lock preparation (in seconds).
+    spin_lock_amplitude
+        Amplitude of the spin-lock pulse (in T).
+    add_spin_lock_spoiler
+        Toggles addition of spoiler gradients after the spin lock pulse.
+    spin_lock_spoiler_ramp_time
+        Duration of gradient spoiler ramps (in seconds).
+    spin_lock_spoiler_flat_time
+        Duration of gradient spoiler plateau (in seconds).
     gx_pre_duration
         Duration of readout pre-winder gradient (in seconds)
     gx_flat_time
@@ -68,10 +85,6 @@ def t2_multi_echo_se_single_line_kernel(
         Bandwidth-time product of rf refocusing pulse (Hz * seconds)
     rf180_apodization
         Apodization factor of rf refocusing pulse
-    gz_spoil_duration
-        Duration of spoiler (crusher) gradient applied around 180° pulse and after readout (in seconds)
-    gz_spoil_area
-        Area / zeroth gradient moment of spoiler (crusher) gradient applied around 180° pulse and after readout
 
     Returns
     -------
@@ -85,14 +98,14 @@ def t2_multi_echo_se_single_line_kernel(
     # create PyPulseq Sequence object and set system limits
     seq = pp.Sequence(system=system)
 
-    # create slice selection 90° and 180° pulse and gradient
+    # create slice selective 90° RF pulse and gradient
     rf90, gz90, _ = pp.make_sinc_pulse(  # type: ignore
         flip_angle=rf90_flip_angle / 180 * np.pi,
         duration=rf90_duration,
         slice_thickness=slice_thickness,
         apodization=rf90_apodization,
         time_bw_product=rf90_bwt,
-        delay=system.rf_dead_time,  # type: ignore
+        delay=system.rf_dead_time,
         system=system,
         return_gz=True,
         use='excitation',
@@ -109,7 +122,7 @@ def t2_multi_echo_se_single_line_kernel(
         apodization=rf180_apodization,
         time_bw_product=rf180_bwt,
         phase_offset=np.pi / 2,
-        delay=system.rf_dead_time,  # type: ignore
+        delay=system.rf_dead_time,
         system=system,
         return_gz=True,
         use='refocusing',
@@ -128,25 +141,37 @@ def t2_multi_echo_se_single_line_kernel(
     phase_areas = (np.arange(n_phase_encoding) - n_phase_encoding / 2) * delta_k
     k0_center_id = np.where((np.arange(n_readout) - n_readout / 2) * delta_k == 0)[0][0]
 
-    # spoiler along slice direction before and after 180°-SE-refocusing pulse
-    gz_spoil = pp.make_trapezoid(channel='z', system=system, area=gz_spoil_area, duration=gz_spoil_duration)
+    # create spoiler gradients
+    gz_spoil = pp.make_trapezoid(channel='z', area=4 / slice_thickness, system=system)
 
-    # loop over all echo times
-    for te_idx, te in enumerate(echo_times):
-        contrast_label = pp.make_label(type='SET', label='ECO', value=int(te_idx))
+    # calculate minimum echo time
+    min_te = (
+        rf90.shape_dur / 2  # half of RF pulse duration
+        + max(rf90.ringdown_time, gz90.fall_time)  # RF ringdown time or gradient fall time
+        + pp.calc_duration(gz90_reph)
+        + pp.calc_duration(gz_spoil)
+        + pp.calc_duration(rf180, gz180)
+        + pp.calc_duration(gz_spoil)
+        + pp.calc_duration(gx_pre)
+        + gx.delay
+        + gx.rise_time
+        + (k0_center_id + 0.5) * adc.dwell  # time from beginning of ADC to time point of k-space center sample
+    )
 
+    if te is None:
+        delay_gz90_reph_and_gz_spoil = delay_gz_spoil_and_gx_pre = 0
+    else:
+        # delays between excitation and refocusing pulse
         delay_gz90_reph_and_gz_spoil = (
             te / 2
-            - rf90.shape_dur / 2  # time from center to end of rf pulse
+            - rf90.shape_dur / 2  # time from center to end of RF pulse
             - max(rf90.ringdown_time, gz90.fall_time)  # RF ringdown time or gradient fall time
-            - pp.calc_duration(gz90_reph)  # rephasing gradient duration
-            - pp.calc_duration(gz_spoil)  # spoiler gradient duration
-            - rf180.delay  # delay of 180° refocusing pulse
-            - rf180.shape_dur / 2  # time from center to end of rf pulse
+            - pp.calc_duration(gz90_reph)  # slice selection rewinder gradient
+            - pp.calc_duration(gz_spoil)  # spoiler gradient before 180° pulse
+            - rf180.delay  # potential delay of 180° refocusing pulse
+            - rf180.shape_dur / 2  # time from to middle of RF pulse
         )
         delay_gz90_reph_and_gz_spoil = round_to_raster(delay_gz90_reph_and_gz_spoil, system.block_duration_raster)
-        if delay_gz90_reph_and_gz_spoil < 0:
-            raise ValueError('Echo time too short for given sequence parameters.')
 
         delay_gz_spoil_and_gx_pre = (
             te / 2
@@ -156,11 +181,17 @@ def t2_multi_echo_se_single_line_kernel(
             - pp.calc_duration(gx_pre)  # readout pre-winder gradient
             - gx.delay  # potential delay of readout gradient
             - gx.rise_time  # rise time of readout gradient
-            - (k0_center_id + 0.5) * adc.dwell  # time from begin of ADC to time point of k-space center sample
+            - (k0_center_id + 0.5) * adc.dwell  # time from beginning of ADC to time point of k-space center sample
         )
+
         delay_gz_spoil_and_gx_pre = round_to_raster(delay_gz_spoil_and_gx_pre, system.block_duration_raster)
-        if delay_gz_spoil_and_gx_pre < 0:
-            raise ValueError('Echo time too short for given sequence parameters.')
+
+    print(f'\nMinimum TE: {min_te * 1000:.3f} ms')
+
+    # loop over spin lock times
+    for tsl_idx, tsl in enumerate(spin_lock_times):
+        # set contrast ('ECO') label for current spin lock time
+        contrast_label = pp.make_label(type='SET', label='ECO', value=int(tsl_idx))
 
         # loop over phase encoding steps
         for pe_idx in np.arange(n_phase_encoding):
@@ -169,6 +200,18 @@ def t2_multi_echo_se_single_line_kernel(
 
             # save start time of current TR block
             _start_time_tr_block = sum(seq.block_durations.values())
+
+            # add T1rho preparation block
+            seq, _ = add_t1rho_prep(
+                seq=seq,
+                system=system,
+                duration_90=rf_spin_lock_duration,
+                spin_lock_time=tsl,
+                spin_lock_amplitude=spin_lock_amplitude,
+                add_spoiler=add_spin_lock_spoiler,
+                spoiler_ramp_time=spin_lock_spoiler_ramp_time,
+                spoiler_flat_time=spin_lock_spoiler_flat_time,
+            )
 
             # add 90° excitation pulse followed by rewinder gradient
             seq.add_block(rf90, gz90)
@@ -196,23 +239,24 @@ def t2_multi_echo_se_single_line_kernel(
 
             # calculate TR delay
             duration_tr_block = sum(seq.block_durations.values()) - _start_time_tr_block
-            tr_delay = round_to_raster(tr - duration_tr_block, system.block_duration_raster)  # type: ignore
+            tr_delay = round_to_raster(tr - duration_tr_block, system.block_duration_raster)
 
-            # save duration of all events in the TR block of the first echo time for sequence plot
-            if te_idx == 0 and pe_idx == 0:
-                min_tr_first_echo_block = duration_tr_block
+            # save time for sequence plot
+            if tsl_idx == 0 and pe_idx == 0:
+                time_to_first_tr_block = duration_tr_block
 
             if tr_delay < 0:
                 raise ValueError('Desired TR too short for given sequence parameters.')
 
             seq.add_block(pp.make_delay(tr_delay))
 
-    return seq, min_tr_first_echo_block
+    return seq, time_to_first_tr_block, min_te
 
 
 def main(
     system: pp.Opts | None = None,
-    echo_times: np.ndarray | None = None,
+    spin_lock_times: np.ndarray | None = None,
+    te: float | None = None,
     tr: float = 8,
     fov_xy: float = 128e-3,
     n_readout: int = 128,
@@ -222,15 +266,17 @@ def main(
     test_report: bool = True,
     timing_check: bool = True,
 ) -> pp.Sequence:
-    """Generate a SE-based multi-echo sequence for T2 mapping.
+    """Generate a SE-based sequence for T1rho mapping with one preparation pulse before every readout.
 
     Parameters
     ----------
     system
         PyPulseq system limits object.
-    echo_times
-        Array of echo times (in seconds).
-        Default values [0.024, 0.05, 0.1, 0.2, 0.4] s are used if set to None.
+    spin_lock_times
+        Array of inversion times (in seconds).
+        Default values [0.025, 0.050, 0.1] s are used if set to None.
+    te
+        Desired echo time (TE) (in seconds). Minimum echo time is used if set to None.
     tr
         Desired repetition time (TR) (in seconds).
     fov_xy
@@ -251,20 +297,20 @@ def main(
     if system is None:
         system = sys_defaults
 
-    if echo_times is None:
-        echo_times = np.array([0.024, 0.05, 0.1, 0.2, 0.4])
+    if spin_lock_times is None:
+        spin_lock_times = np.array([0.025, 0.050, 0.1])
 
-    # create PyPulseq Sequence object and set system limits
-    seq = pp.Sequence(system=system)
+    # define settings of spin-lock preparation pulse
+    rf_spin_lock_duration = 2e-3
+    spin_lock_amplitude = 5.0e-6
+    add_spin_lock_spoiler = True
+    spin_lock_spoiler_ramp_time = 6e-4
+    spin_lock_spoiler_flat_time = 8.4e-3
 
     # define ADC and gradient timing
-    adc_dwell = 20e-6  # 10 µs results in 100 kHz bandwidth
+    adc_dwell = system.grad_raster_time
     gx_pre_duration = 1.0e-3  # duration of readout pre-winder gradient [s]
     gx_flat_time = n_readout * adc_dwell  # flat time of readout gradient [s]
-
-    # define spoiler gradient settings
-    gz_spoil_duration = 0.8e-3  # duration of spoiler gradient [s]
-    gz_spoil_area = 4 / slice_thickness  # area / zeroth gradient moment of spoiler gradient
 
     # define settings of rf excitation pulse
     rf90_duration = 1.28e-3  # duration of the rf excitation pulse [s]
@@ -278,14 +324,20 @@ def main(
     rf180_bwt = 4  # bandwidth-time product of rf refocusing pulse [Hz*s]
     rf180_apodization = 0.5  # apodization factor of rf refocusing pulse
 
-    seq, min_tr_first_echo_block = t2_multi_echo_se_single_line_kernel(
+    seq, time_to_first_tr_block, min_te = t1rho_se_single_line_kernel(
         system=system,
-        echo_times=echo_times,
+        spin_lock_times=spin_lock_times,
+        te=te,
         tr=tr,
         fov_xy=fov_xy,
         n_readout=n_readout,
         n_phase_encoding=n_phase_encoding,
         slice_thickness=slice_thickness,
+        rf_spin_lock_duration=rf_spin_lock_duration,
+        spin_lock_amplitude=spin_lock_amplitude,
+        add_spin_lock_spoiler=add_spin_lock_spoiler,
+        spin_lock_spoiler_ramp_time=spin_lock_spoiler_ramp_time,
+        spin_lock_spoiler_flat_time=spin_lock_spoiler_flat_time,
         gx_pre_duration=gx_pre_duration,
         gx_flat_time=gx_flat_time,
         rf90_duration=rf90_duration,
@@ -296,8 +348,6 @@ def main(
         rf180_flip_angle=rf180_flip_angle,
         rf180_bwt=rf180_bwt,
         rf180_apodization=rf180_apodization,
-        gz_spoil_duration=gz_spoil_duration,
-        gz_spoil_area=gz_spoil_area,
     )
 
     # check timing of the sequence
@@ -315,14 +365,17 @@ def main(
         print(seq.test_report())
 
     # define sequence filename
-    filename = f'{Path(__file__).stem}_{int(fov_xy * 1000)}fov_{n_readout}nx_{n_phase_encoding}ny_{len(echo_times)}TEs'
+    filename = (
+        f'{Path(__file__).stem}_{int(fov_xy * 1000)}fov_{n_readout}nx_{n_phase_encoding}ny_{len(spin_lock_times)}TIs'
+    )
 
     # write all required parameters in the seq-file header/definitions
     seq.set_definition('FOV', [fov_xy, fov_xy, slice_thickness])
     seq.set_definition('ReconMatrix', (n_readout, n_phase_encoding, 1))
     seq.set_definition('SliceThickness', slice_thickness)
-    seq.set_definition('TE', echo_times)
+    seq.set_definition('TE', te or min_te)
     seq.set_definition('TR', tr)
+    seq.set_definition('TSL', spin_lock_times)
 
     # save seq-file to disk
     output_path = Path.cwd() / 'output'
@@ -330,9 +383,8 @@ def main(
     print(f"\nSaving sequence file '{filename}.seq' into folder '{output_path}'.")
     seq.write(str(output_path / filename), create_signature=True)
 
-    # plot first TR block
     if show_plots:
-        seq.plot(time_range=(0, min_tr_first_echo_block))
+        seq.plot(time_range=(0, time_to_first_tr_block))
 
     return seq
 
