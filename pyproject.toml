@@ -37,7 +37,7 @@ classifiers = [
     "Programming Language :: Python :: 3 :: Only",
 ]
 
-dependencies = ["numpy>=1.23,<2.0", "matplotlib<4.0", "pypulseq>=1.4.2"]
+dependencies = ["numpy>=1.23,<2.0", "matplotlib<4.0", "pypulseq>=1.4.2", "ismrmrd>=1.14.1"]
 
 [project.optional-dependencies]
 dev = [
