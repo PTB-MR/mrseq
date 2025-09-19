@@ -19,7 +19,7 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install 'MRseq' Package and Dependencies
         run: pip install --upgrade --upgrade-strategy eager .[dev]
