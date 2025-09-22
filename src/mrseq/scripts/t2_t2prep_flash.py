@@ -359,7 +359,7 @@ def main(
     seq.write(str(output_path / filename), create_signature=True)
 
     if show_plots:
-        seq.plot(time_range=(0, 10 * (tr or min_tr)))
+        seq.plot()
 
     return seq
 
