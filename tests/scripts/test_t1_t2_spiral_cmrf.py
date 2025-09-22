@@ -3,7 +3,7 @@
 import pytest
 from mrseq.scripts.t1_t2_spiral_cmrf import main as create_seq
 
-EXPECTED_DUR = 7056.000000  # defined 2025-02-21
+EXPECTED_DUR = 13.05  # defined 2025-02-22
 
 
 def test_default_seq_duration(system_defaults):

@@ -379,7 +379,7 @@ def t1_t2_spiral_cmrf_kernel(
 def main(
     system: pp.Opts | None = None,
     t2_prep_echo_times: np.ndarray | None = None,
-    tr: float = 10,
+    tr: float = 10e-3,
     cardiac_trigger_delay: float = 0.4,
     fov_xy: float = 128e-3,
     variable_fov_coefficient: float = -0.75,
