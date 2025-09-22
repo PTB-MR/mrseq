@@ -88,6 +88,8 @@ def radial_flash_kernel(
         PyPulseq Sequence object
     min_te
         Shortest possible echo time.
+    min_tr
+        Shortest possible repetition time.
 
     """
     # create PyPulseq Sequence object and set system limits
