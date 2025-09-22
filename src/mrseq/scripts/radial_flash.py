@@ -233,7 +233,7 @@ def radial_flash_kernel(
             if tr_delay > 0:
                 seq.add_block(pp.make_delay(tr_delay))
 
-            if mrd_header_file:
+            if mrd_header_file and spoke_ >= 0:
                 # add acquisitions to metadata
                 k_radial_line = np.linspace(
                     -n_readout_with_oversampling // 2,
@@ -313,7 +313,7 @@ def main(
     readout_oversampling = 2  # readout oversampling factor, commonly 2. This reduces aliasing artifacts.
     spoke_angle = np.pi / 180 * (180 * 0.618034)
 
-    n_dummy_excitations = 0  # number of dummy excitations before data acquisition to ensure steady state
+    n_dummy_excitations = 20  # number of dummy excitations before data acquisition to ensure steady state
 
     # define spoiling
     gz_spoil_duration = 0.8e-3  # duration of spoiler gradient [s]
