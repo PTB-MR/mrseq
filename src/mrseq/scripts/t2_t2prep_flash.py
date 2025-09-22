@@ -16,6 +16,7 @@ def t2_t2prep_flash_kernel(
     te: float | None,
     tr: float | None,
     t2_prep_echo_times: np.ndarray,
+    cardiac_trigger_delay: float,
     fov_xy: float,
     n_readout: int,
     readout_oversampling: float,
@@ -44,6 +45,8 @@ def t2_t2prep_flash_kernel(
         Desired repetition time (TR) (in seconds).
     t2_prep_echo_times
         Echo times of T2-preparation pulse
+    cardiac_trigger_delay
+        Delay after cardiac trigger (in seconds).
     fov_xy
         Field of view in x and y direction (in meters).
     n_readout
@@ -100,8 +103,6 @@ def t2_t2prep_flash_kernel(
         return_gz=True,
         use='excitation',
     )
-
-    trig_delay = 0
 
     # create readout gradient and ADC
     delta_k = 1 / fov_xy
@@ -173,17 +174,21 @@ def t2_t2prep_flash_kernel(
     # seq.add_block(adc, pp.make_label(label='NOISE', type='SET', value=True))
     # seq.add_block(pp.make_label(label='NOISE', type='SET', value=False))
 
-    for t2prep_echo_time in t2_prep_echo_times:
-        # get prep block duration and calculate corresponding trigger delay
-        t2prep_block, prep_dur = add_t2_prep(echo_time=t2prep_echo_time, system=system)
-        current_trig_delay = trig_delay - prep_dur
+    for t2_prep_echo_time in t2_prep_echo_times:
+        if t2_prep_echo_time > 0:
+            # get prep block duration and calculate corresponding trigger delay
+            t2prep_block, prep_dur = add_t2_prep(echo_time=t2_prep_echo_time, system=system)
+            current_trig_delay = cardiac_trigger_delay - prep_dur
 
-        # add trigger
-        seq.add_block(pp.make_trigger(channel='physio1', duration=current_trig_delay))
+            # add trigger
+            seq.add_block(pp.make_trigger(channel='physio1', duration=current_trig_delay))
 
-        # add all events of T2prep block
-        for idx in t2prep_block.block_events:
-            seq.add_block(t2prep_block.get_block(idx))
+            # add all events of T2prep block
+            for idx in t2prep_block.block_events:
+                seq.add_block(t2prep_block.get_block(idx))
+
+        else:
+            seq.add_block(pp.make_trigger(channel='physio1', duration=cardiac_trigger_delay))
 
         for pe_index_ in pe_steps:
             # calculate current phase_offset if rf_spoiling is activated
@@ -230,12 +235,12 @@ def main(
     te: float | None = None,
     tr: float | None = None,
     t2_prep_echo_times: np.ndarray | None = None,
+    cardiac_trigger_delay: float = 0.4,
     fov_xy: float = 128e-3,
     n_readout: int = 128,
     acceleration: int = 2,
     n_fully_sampled_center: int = 12,
     slice_thickness: float = 8e-3,
-    n_slices: int = 1,
     show_plots: bool = True,
     test_report: bool = True,
     timing_check: bool = True,
@@ -252,6 +257,8 @@ def main(
         Desired repetition time (TR) (in seconds). Minimum repetition time is used if set to None.
     t2_prep_echo_times
         Echo times of T2-preparation pulse. If None, default values of [0, 50, 100]ms are used.
+    cardiac_trigger_delay
+        Delay after cardiac trigger (in seconds).
     fov_xy
         Field of view in x and y direction (in meters).
     n_readout
@@ -262,8 +269,6 @@ def main(
         Number of phsae encoding points in the fully sampled center. This will reduce the overall undersampling factor.
     slice_thickness
         Slice thickness of the 2D slice (in meters).
-    n_slices
-        Number of slices.
     show_plots
         Toggles sequence plot.
     test_report
@@ -295,7 +300,8 @@ def main(
     rf_spoiling_phase_increment = 117  # RF spoiling phase increment [°]. Set to 0 for no RF spoiling.
 
     # define sequence filename
-    filename = f'{Path(__file__).stem}_{int(fov_xy * 1000)}fov_{n_readout}nx_{acceleration}us_{n_slices}ns'
+    filename = f'{Path(__file__).stem}_{int(fov_xy * 1000)}fov_{n_readout}nx_{acceleration}us_'
+    filename += f'trig{int(cardiac_trigger_delay * 1000)}ms'
 
     output_path = Path.cwd() / 'output'
     output_path.mkdir(parents=True, exist_ok=True)
@@ -309,6 +315,7 @@ def main(
         te=te,
         tr=tr,
         t2_prep_echo_times=t2_prep_echo_times,
+        cardiac_trigger_delay=cardiac_trigger_delay,
         fov_xy=fov_xy,
         n_readout=n_readout,
         readout_oversampling=readout_oversampling,
