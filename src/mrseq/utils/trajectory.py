@@ -10,7 +10,7 @@ def cartesian_phase_encoding(
     acceleration: int = 1,
     n_fully_sampled_center: int = 0,
     sampling_order: Literal['linear', 'low_high', 'high_low', 'random'] = 'linear',
-) -> tuple[np.array, np.array]:
+) -> tuple[np.ndarray, np.ndarray]:
     """Calculate Cartesian sampling trajectory.
 
     Parameters

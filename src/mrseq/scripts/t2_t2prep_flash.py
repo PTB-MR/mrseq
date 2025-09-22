@@ -4,23 +4,24 @@ from pathlib import Path
 
 import numpy as np
 import pypulseq as pp
-from pypulseq.rotate import rotate
 
+from mrseq.preparations.t2_prep import add_t2_prep
 from mrseq.utils import round_to_raster
 from mrseq.utils import sys_defaults
+from mrseq.utils.trajectory import cartesian_phase_encoding
 
 
 def t2_t2prep_flash_kernel(
     system: pp.Opts,
     te: float | None,
     tr: float | None,
+    t2_prep_echo_times: np.ndarray,
     fov_xy: float,
     n_readout: int,
-    n_spokes: int,
-    spoke_angle: float,
     readout_oversampling: float,
+    acceleration: int,
+    n_fully_sampled_center: int,
     slice_thickness: float,
-    n_slices: int,
     gx_pre_duration: float,
     gx_flat_time: float,
     rf_duration: float,
@@ -41,20 +42,20 @@ def t2_t2prep_flash_kernel(
         Desired echo time (TE) (in seconds). Minimum echo time is used if set to None.
     tr
         Desired repetition time (TR) (in seconds).
+    t2_prep_echo_times
+        Echo times of T2-preparation pulse
     fov_xy
         Field of view in x and y direction (in meters).
     n_readout
         Number of frequency encoding steps.
-    n_spokes
-        Number of radial spokes.
-    spoke_angle
-        Angle between successive radial spokes (in radian).
     readout_oversampling
         Readout oversampling factor, commonly 2. This reduces aliasing artifacts.
+    acceleration
+        Uniform undersampling factor along the phase encoding direction
+    n_fully_sampled_center
+        Number of phsae encoding points in the fully sampled center. This will reduce the overall undersampling factor.
     slice_thickness
         Slice thickness of the 2D slice (in meters).
-    n_slices
-        Number of slices.
     gx_pre_duration
         Duration of readout pre-winder gradient (in seconds)
     gx_flat_time
@@ -80,6 +81,8 @@ def t2_t2prep_flash_kernel(
         PyPulseq Sequence object
     min_te
         Shortest possible echo time.
+    min_tr
+        Shortest possible echo time.
 
     """
     # create PyPulseq Sequence object and set system limits
@@ -98,6 +101,8 @@ def t2_t2prep_flash_kernel(
         use='excitation',
     )
 
+    trig_delay = 0
+
     # create readout gradient and ADC
     delta_k = 1 / fov_xy
     gx = pp.make_trapezoid(channel='x', flat_area=n_readout * delta_k, flat_time=gx_flat_time, system=system)
@@ -109,6 +114,14 @@ def t2_t2prep_flash_kernel(
     gx_pre = pp.make_trapezoid(channel='x', area=-gx.area / 2 - delta_k / 2, duration=gx_pre_duration, system=system)
     gx_post = pp.make_trapezoid(channel='x', area=-gx.area / 2 + delta_k / 2, duration=gx_pre_duration, system=system)
     k0_center_id = np.where((np.arange(n_readout) - n_readout / 2) * delta_k == 0)[0][0]
+
+    # create phase encoding steps
+    pe_steps, pe_fully_sampled_center = cartesian_phase_encoding(
+        n_phase_encoding=n_readout,
+        acceleration=acceleration,
+        n_fully_sampled_center=n_fully_sampled_center,
+        sampling_order='low_high',
+    )
 
     # create spoiler gradients
     gz_spoil = pp.make_trapezoid(channel='z', system=system, area=gz_spoil_area, duration=gz_spoil_duration)
@@ -160,18 +173,23 @@ def t2_t2prep_flash_kernel(
     # seq.add_block(adc, pp.make_label(label='NOISE', type='SET', value=True))
     # seq.add_block(pp.make_label(label='NOISE', type='SET', value=False))
 
-    # init labels (still required - missing SET label will prohibit the sequence from running)
-    seq.add_block(pp.make_label(label='LIN', type='SET', value=0), pp.make_label(label='SLC', type='SET', value=0))
+    for t2prep_echo_time in t2_prep_echo_times:
+        # get prep block duration and calculate corresponding trigger delay
+        t2prep_block, prep_dur = add_t2_prep(echo_time=t2prep_echo_time, system=system)
+        current_trig_delay = trig_delay - prep_dur
 
-    for slice_ in range(n_slices):
-        for spoke_ in range(n_spokes):
+        # add trigger
+        seq.add_block(pp.make_trigger(channel='physio1', duration=current_trig_delay))
+
+        # add all events of T2prep block
+        for idx in t2prep_block.block_events:
+            seq.add_block(t2prep_block.get_block(idx))
+
+        for pe_index_ in pe_steps:
             # calculate current phase_offset if rf_spoiling is activated
             if rf_spoiling_phase_increment > 0:
                 rf.phase_offset = rf_phase / 180 * np.pi
                 adc.phase_offset = rf_phase / 180 * np.pi
-
-            # set frequency offset for current slice
-            rf.freq_offset = gz.amplitude * slice_thickness * (slice_ - (n_slices - 1) / 2)
 
             # add slice selective excitation pulse
             seq.add_block(rf, gz)
@@ -180,28 +198,25 @@ def t2_t2prep_flash_kernel(
             rf_inc = divmod(rf_inc + rf_spoiling_phase_increment, 360.0)[1]
             rf_phase = divmod(rf_phase + rf_inc, 360.0)[1]
 
-            # calculate rotation angle for the current spoke
-            rotation_angle_rad = spoke_angle * spoke_
+            # set labels for the next spoke
+            labels = []
+            labels.append(pp.make_label(label='LIN', type='SET', value=int(pe_index_ - np.min(pe_steps))))
+
+            # calculate current phase encoding gradient
+            gy_pre = pp.make_trapezoid(channel='y', area=delta_k * pe_index_, duration=gx_pre_duration, system=system)
 
             if te is not None:
                 seq.add_block(gzr)
                 seq.add_block(pp.make_delay(te_delay))
-                seq.add_block(*rotate(gx_pre, angle=rotation_angle_rad, axis='z'))
+                seq.add_block(gx_pre, gy_pre, *labels)
             else:
-                seq.add_block(*rotate(gx_pre, gzr, angle=rotation_angle_rad, axis='z'))
+                seq.add_block(gx_pre, gy_pre, gzr, *labels)
 
-            # rotate and add the readout gradient and ADC
-            seq.add_block(*rotate(gx, adc, angle=rotation_angle_rad, axis='z'))
+            # add the readout gradient and ADC
+            seq.add_block(gx, adc)
 
-            # set labels for the next spoke
-            labels = []
-            if spoke_ != n_spokes - 1:
-                labels.append(pp.make_label(label='LIN', type='INC', value=1))
-            else:
-                labels.append(pp.make_label(label='LIN', type='SET', value=0))
-                labels.append(pp.make_label(label='SLC', type='INC', value=1))
-
-            seq.add_block(*rotate(gx_post, gz_spoil, angle=rotation_angle_rad, axis='z'), *labels)
+            gy_pre.amplitude = -gy_pre.amplitude
+            seq.add_block(gx_post, gy_pre, gz_spoil)
 
             # add delay in case TR > min_TR
             if tr_delay > 0:
@@ -214,9 +229,11 @@ def main(
     system: pp.Opts | None = None,
     te: float | None = None,
     tr: float | None = None,
+    t2_prep_echo_times: np.ndarray | None = None,
     fov_xy: float = 128e-3,
     n_readout: int = 128,
-    n_spokes: int = 128,
+    acceleration: int = 2,
+    n_fully_sampled_center: int = 12,
     slice_thickness: float = 8e-3,
     n_slices: int = 1,
     show_plots: bool = True,
@@ -233,12 +250,16 @@ def main(
         Desired echo time (TE) (in seconds). Minimum echo time is used if set to None.
     tr
         Desired repetition time (TR) (in seconds). Minimum repetition time is used if set to None.
+    t2_prep_echo_times
+        Echo times of T2-preparation pulse. If None, default values of [0, 50, 100]ms are used.
     fov_xy
         Field of view in x and y direction (in meters).
     n_readout
         Number of frequency encoding steps.
-    n_spokes
-        Number of radial lines.
+    acceleration
+        Uniform undersampling factor along the phase encoding direction
+    n_fully_sampled_center
+        Number of phsae encoding points in the fully sampled center. This will reduce the overall undersampling factor.
     slice_thickness
         Slice thickness of the 2D slice (in meters).
     n_slices
@@ -253,6 +274,9 @@ def main(
     if system is None:
         system = sys_defaults
 
+    if t2_prep_echo_times is None:
+        t2_prep_echo_times = [0.0, 0.05, 0.1]
+
     # define ADC and gradient timing
     adc_dwell = system.grad_raster_time
     gx_pre_duration = 1.0e-3  # duration of readout pre-winder gradient [s]
@@ -264,9 +288,6 @@ def main(
     rf_bwt = 4  # bandwidth-time product of rf excitation pulse [Hz*s]
     rf_apodization = 0.5  # apodization factor of rf excitation pulse
     readout_oversampling = 2  # readout oversampling factor, commonly 2. This reduces aliasing artifacts.
-    spoke_angle = np.pi / 180 * (180 * 0.618034)
-
-    n_dummy_excitations = 20  # number of dummy excitations before data acquisition to ensure steady state
 
     # define spoiling
     gz_spoil_duration = 0.8e-3  # duration of spoiler gradient [s]
@@ -274,7 +295,7 @@ def main(
     rf_spoiling_phase_increment = 117  # RF spoiling phase increment [°]. Set to 0 for no RF spoiling.
 
     # define sequence filename
-    filename = f'{Path(__file__).stem}_{int(fov_xy * 1000)}fov_{n_readout}nx_{n_spokes}na_{n_slices}ns'
+    filename = f'{Path(__file__).stem}_{int(fov_xy * 1000)}fov_{n_readout}nx_{acceleration}us_{n_slices}ns'
 
     output_path = Path.cwd() / 'output'
     output_path.mkdir(parents=True, exist_ok=True)
@@ -287,14 +308,13 @@ def main(
         system=system,
         te=te,
         tr=tr,
+        t2_prep_echo_times=t2_prep_echo_times,
         fov_xy=fov_xy,
         n_readout=n_readout,
-        n_spokes=n_spokes,
-        spoke_angle=spoke_angle,
         readout_oversampling=readout_oversampling,
+        acceleration=acceleration,
+        n_fully_sampled_center=n_fully_sampled_center,
         slice_thickness=slice_thickness,
-        n_slices=n_slices,
-        n_dummy_excitations=n_dummy_excitations,
         gx_pre_duration=gx_pre_duration,
         gx_flat_time=gx_flat_time,
         rf_duration=rf_duration,
