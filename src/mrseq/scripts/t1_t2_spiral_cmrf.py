@@ -324,7 +324,7 @@ def t1_t2_spiral_cmrf_kernel(
 
             # create slice selective rf pulse for current shot
             rf_n, gz_n, gzr_n = pp.make_sinc_pulse(  # type: ignore
-                flip_angle=fa / 180 * np.pi,
+                flip_angle=fa,
                 duration=rf_duration,
                 slice_thickness=slice_thickness,
                 apodization=rf_apodization,
