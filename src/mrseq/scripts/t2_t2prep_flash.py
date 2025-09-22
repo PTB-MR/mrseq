@@ -206,6 +206,9 @@ def t2_t2prep_flash_kernel(
             # set labels for the next spoke
             labels = []
             labels.append(pp.make_label(label='LIN', type='SET', value=int(pe_index_ - np.min(pe_steps))))
+            labels.append(pp.make_label(label='IMA', type='SET', value=True))
+            labels.append(pp.make_label(label='REF', type='SET', value=pe_index_ in pe_fully_sampled_center))
+            print(pe_index_ in pe_fully_sampled_center)
 
             # calculate current phase encoding gradient
             gy_pre = pp.make_trapezoid(channel='y', area=delta_k * pe_index_, duration=gx_pre_duration, system=system)
