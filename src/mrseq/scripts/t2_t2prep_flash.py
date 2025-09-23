@@ -16,6 +16,7 @@ def t2_t2prep_flash_kernel(
     te: float | None,
     tr: float | None,
     t2_prep_echo_times: np.ndarray,
+    n_recovery_cardiac_cycles: int,
     cardiac_trigger_delay: float,
     fov_xy: float,
     n_readout: int,
@@ -45,6 +46,8 @@ def t2_t2prep_flash_kernel(
         Desired repetition time (TR) (in seconds).
     t2_prep_echo_times
         Echo times of T2-preparation pulse
+    n_recovery_cardiac_cycles
+        Number of cardiac cycles for magnetization recovery after each T2-pepared acquisition.
     cardiac_trigger_delay
         Delay after cardiac trigger (in seconds).
     fov_xy
@@ -230,6 +233,9 @@ def t2_t2prep_flash_kernel(
             if tr_delay > 0:
                 seq.add_block(pp.make_delay(tr_delay))
 
+        for _ in range(n_recovery_cardiac_cycles):
+            seq.add_block(pp.make_trigger(channel='physio1', duration=0.2))  # add delay of for magnetization recovery
+
     return seq, min_te, min_tr
 
 
@@ -285,6 +291,8 @@ def main(
     if t2_prep_echo_times is None:
         t2_prep_echo_times = [0.0, 0.05, 0.1]
 
+    n_recovery_cardiac_cycles = 3
+
     # define ADC and gradient timing
     adc_dwell = system.grad_raster_time
     gx_pre_duration = 1.0e-3  # duration of readout pre-winder gradient [s]
@@ -318,6 +326,7 @@ def main(
         te=te,
         tr=tr,
         t2_prep_echo_times=t2_prep_echo_times,
+        n_recovery_cardiac_cycles=n_recovery_cardiac_cycles,
         cardiac_trigger_delay=cardiac_trigger_delay,
         fov_xy=fov_xy,
         n_readout=n_readout,
