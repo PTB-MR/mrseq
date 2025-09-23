@@ -23,6 +23,7 @@ def t1_molli_bssfp_kernel(
     acceleration: int,
     n_fully_sampled_center: int,
     slice_thickness: float,
+    n_bssfp_startup_pulses: int,
     gx_pre_duration: float,
     gx_flat_time: float,
     rf_duration: float,
@@ -56,6 +57,8 @@ def t1_molli_bssfp_kernel(
         Number of phsae encoding points in the fully sampled center. This will reduce the overall undersampling factor.
     slice_thickness
         Slice thickness of the 2D slice (in meters).
+    n_bssfp_startup_pulses
+        Number of bSSFP startup pulses to reach steady state. A linear flip angle ramp is used during the startup.
     gx_pre_duration
         Duration of readout pre-winder gradient (in seconds)
     gx_flat_time
@@ -68,6 +71,7 @@ def t1_molli_bssfp_kernel(
         Bandwidth-time product of rf excitation pulse (Hz * seconds)
     rf_apodization
         Apodization factor of rf excitation pulse
+
     Returns
     -------
     seq
@@ -151,54 +155,58 @@ def t1_molli_bssfp_kernel(
 
     print(f'\nCurrent echo time = {(min_te + te_delay) * 1000:.2f} ms')
     print(f'Current repetition time = {(current_min_tr + tr_delay) * 1000:.2f} ms')
-    
+
     # obtain noise samples
     # seq.add_block(pp.make_label(label='LIN', type='SET', value=0), pp.make_label(label='SLC', type='SET', value=0))
     # seq.add_block(adc, pp.make_label(label='NOISE', type='SET', value=True))
     # seq.add_block(pp.make_label(label='NOISE', type='SET', value=False))
-    
+
     # Create inversion pulse
     t1_inv_prep, block_duration, time_since_inversion = add_t1_inv_prep(system=system)
-    
-    # Build sequence
-    
-    
-                
+
     # first 5 images
     for cardiac_index in range(5):
         if cardiac_index == 0:
-            # add trigger 
+            # add trigger
             current_trig_delay = cardiac_trigger_delay - block_duration
             seq.add_block(pp.make_trigger(channel='physio1', duration=current_trig_delay))
-            
+
             # add inversion pulse
             for idx in t1_inv_prep.block_events:
                 seq.add_block(t1_inv_prep.get_block(idx))
-                
+
             # wait until inversion time is reached
             seq.add_block(pp.make_delay(inversion_times[0] - time_since_inversion))
         else:
             seq.add_block(pp.make_trigger(channel='physio1', duration=cardiac_trigger_delay))
-    
-        rf_phase = 0.0  # initial RF phase
-        for pe_index_ in pe_steps:
-            # add slice selective excitation pulse
-            rf.phase_offset = rf_phase / 180 * np.pi
-            adc.phase_offset = rf_phase / 180 * np.pi
-            seq.add_block(rf, gz)
 
-            # update rf phase offset for the next excitation pulse
-            rf_phase = divmod(rf_phase + 180., 360.0)[1]
+        rf_signal = rf.signal.copy()
+        for pe_index in range(-n_bssfp_startup_pulses, len(pe_steps)):
+            # add slice selective excitation pulse
+            if pe_index < 0:
+                # use linear flip angle ramp for bSSFP startup pulses
+                rf.signal = rf_signal * 1 / n_bssfp_startup_pulses * (n_bssfp_startup_pulses + pe_index + 1)
+            else:
+                rf.signal = rf_signal
+            if np.mod(pe_index, 2) == 0:
+                rf.phase_offset = -np.pi
+                adc.phase_offset = -np.pi
+            else:
+                rf.phase_offset = 0.0
+                adc.phase_offset = 0.0
+            seq.add_block(rf, gz)
 
             # set labels for the next spoke
             labels = []
-            labels.append(pp.make_label(label='LIN', type='SET', value=int(pe_index_ - np.min(pe_steps))))
+            labels.append(pp.make_label(label='LIN', type='SET', value=int(pe_steps[pe_index] - np.min(pe_steps))))
             labels.append(pp.make_label(label='IMA', type='SET', value=True))
-            labels.append(pp.make_label(label='REF', type='SET', value=pe_index_ in pe_fully_sampled_center))
-            print(pe_index_ in pe_fully_sampled_center)
+            labels.append(pp.make_label(label='REF', type='SET', value=pe_steps[pe_index] in pe_fully_sampled_center))
+            labels.append(pp.make_label(type='SET', label='ECO', value=int(cardiac_index)))
 
             # calculate current phase encoding gradient
-            gy_pre = pp.make_trapezoid(channel='y', area=delta_k * pe_index_, duration=gx_pre_duration, system=system)
+            gy_pre = pp.make_trapezoid(
+                channel='y', area=delta_k * pe_steps[pe_index], duration=gx_pre_duration, system=system
+            )
 
             if te is not None:
                 seq.add_block(gzr)
@@ -272,19 +280,19 @@ def main(
     if inversion_times is None:
         inversion_times = [0.1, 0.18]
 
-    n_recovery_cardiac_cycles = 3
-
     # define ADC and gradient timing
     adc_dwell = system.grad_raster_time
-    gx_pre_duration = 1.0e-3  # duration of readout pre-winder gradient [s]
+    gx_pre_duration = 0.8e-3  # duration of readout pre-winder gradient [s]
     gx_flat_time = n_readout * adc_dwell  # flat time of readout gradient [s]
 
     # define settings of rf excitation pulse
-    rf_duration = 1.28e-3  # duration of the rf excitation pulse [s]
-    rf_flip_angle = 12  # flip angle of rf excitation pulse [°]
-    rf_bwt = 4  # bandwidth-time product of rf excitation pulse [Hz*s]
+    rf_duration = 0.8e-3  # duration of the rf excitation pulse [s]
+    rf_flip_angle = 35  # flip angle of rf excitation pulse [°]
+    rf_bwt = 1.5  # bandwidth-time product of rf excitation pulse [Hz*s]
     rf_apodization = 0.5  # apodization factor of rf excitation pulse
     readout_oversampling = 2  # readout oversampling factor, commonly 2. This reduces aliasing artifacts.
+
+    n_bssfp_startup_pulses = 11  # number of bSSFP startup pulses to reach steady state.
 
     # define sequence filename
     filename = f'{Path(__file__).stem}_{int(fov_xy * 1000)}fov_{n_readout}nx_{acceleration}us_'
@@ -302,7 +310,6 @@ def main(
         te=te,
         tr=tr,
         inversion_times=inversion_times,
-        n_recovery_cardiac_cycles=n_recovery_cardiac_cycles,
         cardiac_trigger_delay=cardiac_trigger_delay,
         fov_xy=fov_xy,
         n_readout=n_readout,
@@ -310,6 +317,7 @@ def main(
         acceleration=acceleration,
         n_fully_sampled_center=n_fully_sampled_center,
         slice_thickness=slice_thickness,
+        n_bssfp_startup_pulses=n_bssfp_startup_pulses,
         gx_pre_duration=gx_pre_duration,
         gx_flat_time=gx_flat_time,
         rf_duration=rf_duration,
