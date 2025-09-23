@@ -177,7 +177,7 @@ def t2_t2prep_flash_kernel(
     # seq.add_block(adc, pp.make_label(label='NOISE', type='SET', value=True))
     # seq.add_block(pp.make_label(label='NOISE', type='SET', value=False))
 
-    for t2_prep_echo_time in t2_prep_echo_times:
+    for t2_idx, t2_prep_echo_time in enumerate(t2_prep_echo_times):
         if t2_prep_echo_time > 0:
             # get prep block duration and calculate corresponding trigger delay
             t2prep_block, prep_dur = add_t2_prep(echo_time=t2_prep_echo_time, system=system)
@@ -211,7 +211,7 @@ def t2_t2prep_flash_kernel(
             labels.append(pp.make_label(label='LIN', type='SET', value=int(pe_index_ - np.min(pe_steps))))
             labels.append(pp.make_label(label='IMA', type='SET', value=True))
             labels.append(pp.make_label(label='REF', type='SET', value=pe_index_ in pe_fully_sampled_center))
-            print(pe_index_ in pe_fully_sampled_center)
+            labels.append(pp.make_label(type='SET', label='ECO', value=int(t2_idx)))
 
             # calculate current phase encoding gradient
             gy_pre = pp.make_trapezoid(channel='y', area=delta_k * pe_index_, duration=gx_pre_duration, system=system)
