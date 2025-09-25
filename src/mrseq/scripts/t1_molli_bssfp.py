@@ -143,7 +143,7 @@ def t1_molli_bssfp_kernel(
         pp.calc_duration(gz)  # rf pulse
         + gzr_gx_dur  # slice selection re-phasing gradient and readout pre-winder
         + pp.calc_duration(gx)  # readout gradient
-        + pp.calc_duration(gzr, gx_post)  # gradient spoiler or readout-re-winder
+        + pp.calc_duration(gzr, gx_post)  # readout or slice rewinder
     )
 
     # calculate repetition time delay (tr_delay)
