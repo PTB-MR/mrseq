@@ -10,6 +10,7 @@ def cartesian_phase_encoding(
     acceleration: int = 1,
     n_fully_sampled_center: int = 0,
     sampling_order: Literal['linear', 'low_high', 'high_low', 'random'] = 'linear',
+    n_phase_encoding_per_shot: int | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Calculate Cartesian sampling trajectory.
 
@@ -23,6 +24,9 @@ def cartesian_phase_encoding(
         number of phsae encoding points in the fully sampled center. This will reduce the overall undersampling factor.
     sampling_order
         order how phase encoding points are sampled
+    n_phase_encoding_per_shot
+        used to ensure that all phase encoding points can be acquired in an integer number of shots. If None, this
+        parameter is ignored, i.e. equal to n_phase_encoding_per_shot = 1
     """
     if sampling_order == 'random':
         # Linear order of a fully sampled kpe dimension. Undersampling is done later.
@@ -39,10 +43,22 @@ def cartesian_phase_encoding(
     )
     kpe = np.unique(np.concatenate((kpe, kpe_fully_sampled_center)))
 
+    # Always acquire more to ensure desired resolution
+    if n_phase_encoding_per_shot and sampling_order != 'random':
+        kpe_extended = np.arange(-n_phase_encoding, n_phase_encoding)
+        kpe_extended = kpe_extended[np.argsort(np.abs(kpe_extended), kind='stable')]
+        idx = 0
+        while np.mod(len(kpe), n_phase_encoding_per_shot) > 0:
+            kpe = np.unique(np.concatenate((kpe, (kpe_extended[idx],))))
+            idx += 1
+
     # Different temporal orders of phase encoding points
     if sampling_order == 'random':
         perm = np.random.permutation(kpe)
-        kpe = kpe[perm[: len(perm) // acceleration]]
+        npe = len(perm) // acceleration
+        if n_phase_encoding_per_shot:
+            npe += n_phase_encoding_per_shot - np.mod(npe, n_phase_encoding_per_shot)
+        kpe = kpe[perm[:npe]]
     elif sampling_order == 'linear':
         kpe = np.sort(kpe)
     elif sampling_order == 'low_high':

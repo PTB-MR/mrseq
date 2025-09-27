@@ -25,6 +25,7 @@ def t2star_multi_echo_flash_kernel(
     partial_echo_factor: float,
     acceleration: int,
     n_fully_sampled_center: int,
+    n_pe_points_per_cardiac_cycle: int,
     slice_thickness: float,
     gx_pre_duration: float,
     gx_flat_time: float,
@@ -65,6 +66,8 @@ def t2star_multi_echo_flash_kernel(
         Uniform undersampling factor along the phase encoding direction
     n_fully_sampled_center
         Number of phsae encoding points in the fully sampled center. This will reduce the overall undersampling factor.
+    n_pe_points_per_cardiac_cycle
+        Number of phase encoding points per cardiac cycle.
     slice_thickness
         Slice thickness of the 2D slice (in meters).
     gx_pre_duration
@@ -155,6 +158,7 @@ def t2star_multi_echo_flash_kernel(
         acceleration=acceleration,
         n_fully_sampled_center=n_fully_sampled_center,
         sampling_order='low_high',
+        n_phase_encoding_per_shot=n_pe_points_per_cardiac_cycle,
     )
 
     # create spoiler gradients
@@ -318,6 +322,7 @@ def main(
     partial_echo_factor: float = 0.9,
     acceleration: int = 2,
     n_fully_sampled_center: int = 12,
+    n_pe_points_per_cardiac_cycle: int = 16,
     slice_thickness: float = 8e-3,
     show_plots: bool = True,
     test_report: bool = True,
@@ -347,6 +352,8 @@ def main(
         Uniform undersampling factor along the phase encoding direction
     n_fully_sampled_center
         Number of phsae encoding points in the fully sampled center. This will reduce the overall undersampling factor.
+    n_pe_points_per_cardiac_cycle
+        Number of phase encoding points per cardiac cycle.
     slice_thickness
         Slice thickness of the 2D slice (in meters).
     show_plots
@@ -398,6 +405,7 @@ def main(
         readout_oversampling=readout_oversampling,
         acceleration=acceleration,
         n_fully_sampled_center=n_fully_sampled_center,
+        n_pe_points_per_cardiac_cycle=n_pe_points_per_cardiac_cycle,
         slice_thickness=slice_thickness,
         gx_pre_duration=gx_pre_duration,
         gx_flat_time=gx_flat_time,
