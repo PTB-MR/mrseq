@@ -141,6 +141,7 @@ def t1_molli_bssfp_kernel(
     te_delay = 0 if te is None else round_to_raster(te - min_te, system.block_duration_raster)
     if not te_delay >= 0:
         raise ValueError(f'TE must be larger than {min_te * 1000:.2f} ms. Current value is {te * 1000:.2f} ms.')
+    current_te = min_te + te_delay
 
     # calculate minimum repetition time
     min_tr = (
@@ -153,12 +154,13 @@ def t1_molli_bssfp_kernel(
     # calculate repetition time delay (tr_delay)
     current_min_tr = min_tr + te_delay
     tr_delay = 0 if tr is None else round_to_raster(tr - current_min_tr, system.block_duration_raster)
-
     if not tr_delay >= 0:
         raise ValueError(f'TR must be larger than {current_min_tr * 1000:.2f} ms. Current value is {tr * 1000:.2f} ms.')
+    current_tr = current_min_tr + tr_delay
 
-    print(f'\nCurrent echo time = {(min_te + te_delay) * 1000:.2f} ms')
-    print(f'Current repetition time = {(current_min_tr + tr_delay) * 1000:.2f} ms')
+    print(f'\nCurrent echo time = {current_te * 1000:.2f} ms')
+    print(f'Current repetition time = {current_tr * 1000:.2f} ms')
+    print(f'Acquisition window per cardiac cycle = {current_tr * len(pe_steps) * 1000:.2f} ms')
 
     # obtain noise samples
     # seq.add_block(pp.make_label(label='LIN', type='SET', value=0), pp.make_label(label='SLC', type='SET', value=0))
@@ -173,7 +175,13 @@ def t1_molli_bssfp_kernel(
     for cardiac_index in range(5):
         if cardiac_index == 0:
             # add trigger
-            current_trig_delay = cardiac_trigger_delay - block_duration
+            current_trig_delay = (
+                cardiac_trigger_delay
+                - block_duration
+                - n_bssfp_startup_pulses * current_tr
+                - current_te
+                - (inversion_times[0] - time_since_inversion)
+            )
             seq.add_block(pp.make_trigger(channel='physio1', duration=current_trig_delay))
 
             # add inversion pulse
@@ -183,7 +191,8 @@ def t1_molli_bssfp_kernel(
             # wait until inversion time is reached
             seq.add_block(pp.make_delay(inversion_times[0] - time_since_inversion))
         else:
-            seq.add_block(pp.make_trigger(channel='physio1', duration=cardiac_trigger_delay))
+            current_trig_delay = cardiac_trigger_delay - n_bssfp_startup_pulses * current_tr - current_te
+            seq.add_block(pp.make_trigger(channel='physio1', duration=current_trig_delay))
 
         rf_signal = rf.signal.copy()
         for pe_index in range(-n_bssfp_startup_pulses, len(pe_steps)):
@@ -209,7 +218,10 @@ def t1_molli_bssfp_kernel(
 
             # calculate current phase encoding gradient
             gy_pre = pp.make_trapezoid(
-                channel='y', area=delta_k * pe_steps[pe_index], duration=gx_pre_duration, system=system
+                channel='y',
+                area=delta_k * pe_steps[pe_index if pe_index >= 0 else 0],
+                duration=gx_pre_duration,
+                system=system,
             )
 
             if te is not None:
