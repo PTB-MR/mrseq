@@ -2,11 +2,13 @@
 
 from pathlib import Path
 
+import ismrmrd
 import numpy as np
 import pypulseq as pp
 
 from mrseq.utils import round_to_raster
 from mrseq.utils import sys_defaults
+from mrseq.utils.create_ismrmrd_header import create_header
 from mrseq.utils.trajectory import cartesian_phase_encoding
 
 
@@ -33,6 +35,7 @@ def t2star_multi_echo_flash_kernel(
     rf_spoiling_phase_increment: float,
     gz_spoil_duration: float,
     gz_spoil_area: float,
+    mrd_header_file: str | None,
 ) -> tuple[pp.Sequence, float, float]:
     """Generate a FLASH sequence with multiple echoes.
 
@@ -82,6 +85,8 @@ def t2star_multi_echo_flash_kernel(
         Duration of spoiler gradient (in seconds)
     gz_spoil_area
         Area of spoiler gradient (in mT/m * s)
+    mrd_header_file
+        Filename of the ISMRMRD header file to be created. If None, no header file is created.
 
     Returns
     -------
@@ -196,9 +201,20 @@ def t2star_multi_echo_flash_kernel(
     print(f'\nCurrent echo time = {(min_te + te_delay) * 1000:.2f} ms')
     print(f'Current repetition time = {(current_min_tr + tr_delay) * 1000:.2f} ms')
 
-    # choose initial rf phase offset
-    rf_phase = 0
-    rf_inc = 0
+    # create header
+    if mrd_header_file:
+        hdr = create_header(
+            traj_type='radial',
+            fov=fov_xy,
+            res=fov_xy / n_readout,
+            slice_thickness=slice_thickness,
+            dt=adc.dwell,
+            n_k1=len(pe_steps),
+        )
+
+        # write header to file
+        prot = ismrmrd.Dataset(mrd_header_file, 'w')
+        prot.write_xml_header(hdr.toXML('utf-8'))
 
     # obtain noise samples
     # seq.add_block(pp.make_label(label='LIN', type='SET', value=0), pp.make_label(label='SLC', type='SET', value=0))
@@ -206,10 +222,19 @@ def t2star_multi_echo_flash_kernel(
     # seq.add_block(pp.make_label(label='NOISE', type='SET', value=False))
     # seq.add_block(pp.make_delay(system.rf_dead_time))
 
+    if mrd_header_file:
+        acq = ismrmrd.Acquisition()
+        acq.resize(trajectory_dimensions=2, number_of_samples=adc.num_samples)
+        # prot.append_acquisition(acq)
+
+    # choose initial rf phase offset
+    rf_phase = 0
+    rf_inc = 0
+
     for t2_idx in range(5):
         seq.add_block(pp.make_trigger(channel='physio1', duration=cardiac_trigger_delay))
 
-        for pe_index_ in pe_steps:
+        for pe_index in pe_steps:
             # calculate current phase_offset if rf_spoiling is activated
             if rf_spoiling_phase_increment > 0:
                 rf.phase_offset = rf_phase / 180 * np.pi
@@ -224,12 +249,12 @@ def t2star_multi_echo_flash_kernel(
 
             # set labels for the next spoke
             labels = []
-            labels.append(pp.make_label(label='LIN', type='SET', value=int(pe_index_ - np.min(pe_steps))))
-            labels.append(pp.make_label(label='IMA', type='SET', value=pe_index_ in pe_fully_sampled_center))
+            labels.append(pp.make_label(label='LIN', type='SET', value=int(pe_index - np.min(pe_steps))))
+            labels.append(pp.make_label(label='IMA', type='SET', value=pe_index in pe_fully_sampled_center))
             labels.append(pp.make_label(type='SET', label='ECO', value=int(t2_idx)))
 
             # calculate current phase encoding gradient
-            gy_pre = pp.make_trapezoid(channel='y', area=delta_k * pe_index_, duration=gx_pre_duration, system=system)
+            gy_pre = pp.make_trapezoid(channel='y', area=delta_k * pe_index, duration=gx_pre_duration, system=system)
 
             if te is not None:
                 seq.add_block(gzr)
@@ -254,6 +279,29 @@ def t2star_multi_echo_flash_kernel(
             # add delay in case TR > min_TR
             if tr_delay > 0:
                 seq.add_block(pp.make_delay(tr_delay))
+
+            if mrd_header_file:
+                # add acquisitions to metadata
+                k0_trajectory = np.linspace(
+                    -n_readout_pre_echo,
+                    n_readout_post_echo,
+                    n_readout_with_oversampling,
+                )
+                cart_trajectory = np.zeros((n_readout_with_oversampling, 2), dtype=np.float32)
+
+                for echo_ in range(n_echoes):
+                    gx_sign = (-1) ** echo_
+                    cart_trajectory[:, 0] = k0_trajectory * gx_sign
+                    cart_trajectory[:, 1] = pe_index
+
+                    acq = ismrmrd.Acquisition()
+                    acq.resize(trajectory_dimensions=2, number_of_samples=adc.num_samples)
+                    acq.traj[:] = cart_trajectory
+                    prot.append_acquisition(acq)
+
+    # close ISMRMRD file
+    if mrd_header_file:
+        prot.close()
 
     return seq, min_te, min_tr
 
@@ -322,7 +370,7 @@ def main(
     rf_flip_angle = 12  # flip angle of rf excitation pulse [°]
     rf_bwt = 4  # bandwidth-time product of rf excitation pulse [Hz*s]
     rf_apodization = 0.5  # apodization factor of rf excitation pulse
-    readout_oversampling = 2  # readout oversampling factor, commonly 2. This reduces aliasing artifacts.
+    readout_oversampling = 1  # readout oversampling factor, commonly 2. This reduces aliasing artifacts.
 
     # define spoiling
     gz_spoil_duration = 0.8e-3  # duration of spoiler gradient [s]
@@ -359,6 +407,7 @@ def main(
         rf_spoiling_phase_increment=rf_spoiling_phase_increment,
         gz_spoil_duration=gz_spoil_duration,
         gz_spoil_area=gz_spoil_area,
+        mrd_header_file=output_path / Path(filename + '_header.h5'),
     )
 
     # check timing of the sequence
