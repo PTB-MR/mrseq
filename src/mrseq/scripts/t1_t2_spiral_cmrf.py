@@ -263,6 +263,17 @@ def t1_t2_spiral_cmrf_kernel(
         prot = ismrmrd.Dataset(mrd_header_file, 'w')
         prot.write_xml_header(hdr.toXML('utf-8'))
 
+    # obtain noise samples
+    seq.add_block(pp.make_label(label='LIN', type='SET', value=0), pp.make_label(label='SLC', type='SET', value=0))
+    seq.add_block(adc, pp.make_label(label='NOISE', type='SET', value=True))
+    seq.add_block(pp.make_label(label='NOISE', type='SET', value=False))
+    seq.add_block(pp.make_delay(system.rf_dead_time))
+
+    if mrd_header_file:
+        acq = ismrmrd.Acquisition()
+        acq.resize(trajectory_dimensions=2, number_of_samples=adc.num_samples)
+        prot.append_acquisition(acq)
+
     # initialize LIN label
     seq.add_block(pp.make_delay(minimum_time_to_set_label), pp.make_label(label='LIN', type='SET', value=0))
 
@@ -440,8 +451,8 @@ def main(
     output_path.mkdir(parents=True, exist_ok=True)
 
     # delete existing header file
-    if (output_path / Path(filename + '.mrd')).exists():
-        (output_path / Path(filename + '.mrd')).unlink()
+    if (output_path / Path(filename + '_header.h5')).exists():
+        (output_path / Path(filename + '_header.h5')).unlink()
 
     seq, inversion_time, te = t1_t2_spiral_cmrf_kernel(
         system=system,
@@ -458,7 +469,7 @@ def main(
         rf_duration=rf_duration,
         rf_bwt=rf_bwt,
         rf_apodization=rf_apodization,
-        mrd_header_file=str(output_path / Path(filename + '.mrd')),
+        mrd_header_file=str(output_path / Path(filename + '_header.h5')),
     )
 
     # check timing of the sequence
