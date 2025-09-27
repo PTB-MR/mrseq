@@ -204,7 +204,7 @@ def t2star_multi_echo_flash_kernel(
     # create header
     if mrd_header_file:
         hdr = create_header(
-            traj_type='radial',
+            traj_type='cartesian',
             fov=fov_xy,
             res=fov_xy / n_readout,
             slice_thickness=slice_thickness,
