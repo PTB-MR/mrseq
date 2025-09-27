@@ -117,7 +117,9 @@ def t2_t2prep_flash_kernel(
     # create frequency encoding pre- and re-winder gradient
     gx_pre = pp.make_trapezoid(channel='x', area=-gx.area / 2 - delta_k / 2, duration=gx_pre_duration, system=system)
     gx_post = pp.make_trapezoid(channel='x', area=-gx.area / 2 + delta_k / 2, duration=gx_pre_duration, system=system)
-    k0_center_id = np.where((np.arange(n_readout) - n_readout / 2) * delta_k == 0)[0][0]
+    k0_center_id = np.where((np.arange(n_readout_with_oversampling) - n_readout_with_oversampling / 2) * delta_k == 0)[
+        0
+    ][0]
 
     # create phase encoding steps
     pe_steps, pe_fully_sampled_center = cartesian_phase_encoding(
@@ -176,6 +178,7 @@ def t2_t2prep_flash_kernel(
     # seq.add_block(pp.make_label(label='LIN', type='SET', value=0), pp.make_label(label='SLC', type='SET', value=0))
     # seq.add_block(adc, pp.make_label(label='NOISE', type='SET', value=True))
     # seq.add_block(pp.make_label(label='NOISE', type='SET', value=False))
+    # seq.add_block(pp.make_delay(system.rf_dead_time))
 
     for t2_idx, t2_prep_echo_time in enumerate(t2_prep_echo_times):
         if t2_prep_echo_time > 0:
@@ -209,8 +212,7 @@ def t2_t2prep_flash_kernel(
             # set labels for the next spoke
             labels = []
             labels.append(pp.make_label(label='LIN', type='SET', value=int(pe_index_ - np.min(pe_steps))))
-            labels.append(pp.make_label(label='IMA', type='SET', value=True))
-            labels.append(pp.make_label(label='REF', type='SET', value=pe_index_ in pe_fully_sampled_center))
+            labels.append(pp.make_label(label='IMA', type='SET', value=pe_index_ in pe_fully_sampled_center))
             labels.append(pp.make_label(type='SET', label='ECO', value=int(t2_idx)))
 
             # calculate current phase encoding gradient
@@ -233,8 +235,12 @@ def t2_t2prep_flash_kernel(
             if tr_delay > 0:
                 seq.add_block(pp.make_delay(tr_delay))
 
-        for _ in range(n_recovery_cardiac_cycles):
-            seq.add_block(pp.make_trigger(channel='physio1', duration=0.2))  # add delay of for magnetization recovery
+        if t2_idx < len(t2_prep_echo_times) - 1:
+            # add delay for magnetization recovery
+            for _ in range(n_recovery_cardiac_cycles):
+                seq.add_block(
+                    pp.make_trigger(channel='physio1', duration=0.2)
+                )  # add delay of for magnetization recovery
 
     return seq, min_te, min_tr
 
@@ -295,7 +301,7 @@ def main(
 
     # define ADC and gradient timing
     adc_dwell = system.grad_raster_time
-    gx_pre_duration = 1.0e-3  # duration of readout pre-winder gradient [s]
+    gx_pre_duration = 0.8e-3  # duration of readout pre-winder gradient [s]
     gx_flat_time = n_readout * adc_dwell  # flat time of readout gradient [s]
 
     # define settings of rf excitation pulse
@@ -316,10 +322,6 @@ def main(
 
     output_path = Path.cwd() / 'output'
     output_path.mkdir(parents=True, exist_ok=True)
-
-    # delete existing header file
-    if (output_path / Path(filename + '.mrd')).exists():
-        (output_path / Path(filename + '.mrd')).unlink()
 
     seq, min_te, min_tr = t2_t2prep_flash_kernel(
         system=system,
