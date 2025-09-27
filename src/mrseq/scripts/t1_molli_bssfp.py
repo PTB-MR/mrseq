@@ -105,10 +105,14 @@ def t1_molli_bssfp_kernel(
     n_readout_with_oversampling = n_readout_with_oversampling + np.mod(n_readout_with_oversampling, 2)  # make even
     adc = pp.make_adc(num_samples=n_readout_with_oversampling, duration=gx.flat_time, delay=gx.rise_time, system=system)
 
+    print(f'Current receiver bandwidth = {1 / gx.flat_time:.0f} Hz/pixel')
+
     # create frequency encoding pre- and re-winder gradient
     gx_pre = pp.make_trapezoid(channel='x', area=-gx.area / 2 - delta_k / 2, duration=gx_pre_duration, system=system)
     gx_post = pp.make_trapezoid(channel='x', area=-gx.area / 2 + delta_k / 2, duration=gx_pre_duration, system=system)
-    k0_center_id = np.where((np.arange(n_readout) - n_readout / 2) * delta_k == 0)[0][0]
+    k0_center_id = np.where((np.arange(n_readout_with_oversampling) - n_readout_with_oversampling / 2) * delta_k == 0)[
+        0
+    ][0]
 
     # create phase encoding steps
     pe_steps, pe_fully_sampled_center = cartesian_phase_encoding(
@@ -160,6 +164,7 @@ def t1_molli_bssfp_kernel(
     # seq.add_block(pp.make_label(label='LIN', type='SET', value=0), pp.make_label(label='SLC', type='SET', value=0))
     # seq.add_block(adc, pp.make_label(label='NOISE', type='SET', value=True))
     # seq.add_block(pp.make_label(label='NOISE', type='SET', value=False))
+    # seq.add_block(pp.make_delay(system.rf_dead_time))
 
     # Create inversion pulse
     t1_inv_prep, block_duration, time_since_inversion = add_t1_inv_prep(system=system)
@@ -199,8 +204,7 @@ def t1_molli_bssfp_kernel(
             # set labels for the next spoke
             labels = []
             labels.append(pp.make_label(label='LIN', type='SET', value=int(pe_steps[pe_index] - np.min(pe_steps))))
-            labels.append(pp.make_label(label='IMA', type='SET', value=True))
-            labels.append(pp.make_label(label='REF', type='SET', value=pe_steps[pe_index] in pe_fully_sampled_center))
+            labels.append(pp.make_label(label='IMA', type='SET', value=pe_steps[pe_index] in pe_fully_sampled_center))
             labels.append(pp.make_label(type='SET', label='ECO', value=int(cardiac_index)))
 
             # calculate current phase encoding gradient
@@ -216,7 +220,10 @@ def t1_molli_bssfp_kernel(
                 seq.add_block(gx_pre, gy_pre, gzr, *labels)
 
             # add the readout gradient and ADC
-            seq.add_block(gx, adc)
+            if pe_index >= 0:
+                seq.add_block(gx, adc)
+            else:
+                seq.add_block(gx)
 
             gy_pre.amplitude = -gy_pre.amplitude
             seq.add_block(gx_post, gy_pre, gzr)
@@ -239,6 +246,7 @@ def main(
     acceleration: int = 2,
     n_fully_sampled_center: int = 12,
     slice_thickness: float = 8e-3,
+    receiver_bandwidth_per_pixel: float = 1000,  # Hz/pixel
     show_plots: bool = True,
     test_report: bool = True,
     timing_check: bool = True,
@@ -267,6 +275,8 @@ def main(
         Number of phsae encoding points in the fully sampled center. This will reduce the overall undersampling factor.
     slice_thickness
         Slice thickness of the 2D slice (in meters).
+    receiver_bandwidth_per_pixel
+        Desired receiver bandwidth per pixel (in Hz/pixel). This is used to calculate the readout duration.
     show_plots
         Toggles sequence plot.
     test_report
@@ -280,17 +290,22 @@ def main(
     if inversion_times is None:
         inversion_times = [0.1, 0.18]
 
-    # define ADC and gradient timing
-    adc_dwell = system.grad_raster_time
-    gx_pre_duration = 0.8e-3  # duration of readout pre-winder gradient [s]
-    gx_flat_time = n_readout * adc_dwell  # flat time of readout gradient [s]
-
     # define settings of rf excitation pulse
     rf_duration = 0.8e-3  # duration of the rf excitation pulse [s]
     rf_flip_angle = 35  # flip angle of rf excitation pulse [°]
     rf_bwt = 1.5  # bandwidth-time product of rf excitation pulse [Hz*s]
     rf_apodization = 0.5  # apodization factor of rf excitation pulse
     readout_oversampling = 2  # readout oversampling factor, commonly 2. This reduces aliasing artifacts.
+
+    # define ADC and gradient timing
+    n_readout_with_oversampling = int(n_readout * readout_oversampling)
+    adc_dwell = round_to_raster(
+        1.0 / (receiver_bandwidth_per_pixel * n_readout_with_oversampling), system.adc_raster_time, method='ceil'
+    )  # dwell time of ADC [s]
+    gx_pre_duration = 0.8e-3  # duration of readout pre-winder gradient [s]
+    gx_flat_time = round_to_raster(
+        n_readout_with_oversampling * adc_dwell, system.grad_raster_time
+    )  # flat time of readout gradient [s]
 
     n_bssfp_startup_pulses = 11  # number of bSSFP startup pulses to reach steady state.
 
@@ -300,10 +315,6 @@ def main(
 
     output_path = Path.cwd() / 'output'
     output_path.mkdir(parents=True, exist_ok=True)
-
-    # delete existing header file
-    if (output_path / Path(filename + '.mrd')).exists():
-        (output_path / Path(filename + '.mrd')).unlink()
 
     seq, min_te, min_tr = t1_molli_bssfp_kernel(
         system=system,
