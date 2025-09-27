@@ -148,9 +148,6 @@ def t2star_multi_echo_flash_kernel(
     gx_between = pp.make_trapezoid(
         channel='x', area=gx_pre.area - gx_post.area, duration=gx_pre_duration, system=system
     )
-    k0_center_id = np.where((np.arange(n_readout_with_oversampling) - n_readout_with_oversampling / 2) * delta_k == 0)[
-        0
-    ][0]
 
     # create phase encoding steps
     pe_steps, pe_fully_sampled_center = cartesian_phase_encoding(
@@ -175,7 +172,7 @@ def t2star_multi_echo_flash_kernel(
         + gzr_gx_dur  # slice selection re-phasing gradient and readout pre-winder
         + gx.delay  # potential delay of readout gradient
         + gx.rise_time  # rise time of readout gradient
-        + (k0_center_id + 0.5) * adc.dwell  # time from beginning of ADC to time point of k-space center sample
+        + (n_readout_pre_echo + 0.5) * adc.dwell  # time from beginning of ADC to time point of k-space center sample
     )
 
     # calculate echo time delay (te_delay)
@@ -264,7 +261,9 @@ def t2star_multi_echo_flash_kernel(
                 seq.add_block(gx_pre, gy_pre, gzr, *labels)
 
             # add readout gradient and ADC
+            tstart_gx = []
             for echo_ in range(n_echoes):
+                tstart_gx.append(sum(seq.block_durations.values()))
                 gx_sign = (-1) ** echo_
                 labels = []
                 labels.append(pp.make_label(type='SET', label='REV', value=gx_sign == -1))
