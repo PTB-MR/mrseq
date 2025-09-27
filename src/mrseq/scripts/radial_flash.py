@@ -118,7 +118,9 @@ def radial_flash_kernel(
     # create frequency encoding pre- and re-winder gradient
     gx_pre = pp.make_trapezoid(channel='x', area=-gx.area / 2 - delta_k / 2, duration=gx_pre_duration, system=system)
     gx_post = pp.make_trapezoid(channel='x', area=-gx.area / 2 + delta_k / 2, duration=gx_pre_duration, system=system)
-    k0_center_id = np.where((np.arange(n_readout) - n_readout / 2) * delta_k == 0)[0][0]
+    k0_center_id = np.where((np.arange(n_readout_with_oversampling) - n_readout_with_oversampling / 2) * delta_k == 0)[
+        0
+    ][0]
 
     # create spoiler gradients
     gz_spoil = pp.make_trapezoid(channel='z', system=system, area=gz_spoil_area, duration=gz_spoil_duration)
@@ -184,9 +186,12 @@ def radial_flash_kernel(
     # seq.add_block(pp.make_label(label='LIN', type='SET', value=0), pp.make_label(label='SLC', type='SET', value=0))
     # seq.add_block(adc, pp.make_label(label='NOISE', type='SET', value=True))
     # seq.add_block(pp.make_label(label='NOISE', type='SET', value=False))
+    # seq.add_block(pp.make_delay(system.rf_dead_time))
 
-    # init labels (still required - missing SET label will prohibit the sequence from running)
-    seq.add_block(pp.make_label(label='LIN', type='SET', value=0), pp.make_label(label='SLC', type='SET', value=0))
+    if mrd_header_file:
+        acq = ismrmrd.Acquisition()
+        acq.resize(trajectory_dimensions=2, number_of_samples=adc.num_samples)
+        prot.append_acquisition(acq)
 
     for slice_ in range(n_slices):
         for spoke_ in range(-n_dummy_excitations, n_spokes):
@@ -217,19 +222,14 @@ def radial_flash_kernel(
 
             # rotate and add the readout gradient and ADC
             if spoke_ >= 0:
-                seq.add_block(*rotate(gx, adc, angle=rotation_angle_rad, axis='z'))
+                labels = []
+                labels.append(pp.make_label(label='LIN', type='SET', value=spoke_))
+                labels.append(pp.make_label(label='SLC', type='SET', value=slice_))
+                seq.add_block(*rotate(gx, adc, angle=rotation_angle_rad, axis='z'), *labels)
             else:
                 seq.add_block(pp.make_delay(pp.calc_duration(gx, adc)))
 
-            # set labels for the next spoke
-            labels = []
-            if spoke_ != n_spokes - 1:
-                labels.append(pp.make_label(label='LIN', type='INC', value=1))
-            else:
-                labels.append(pp.make_label(label='LIN', type='SET', value=0))
-                labels.append(pp.make_label(label='SLC', type='INC', value=1))
-
-            seq.add_block(*rotate(gx_post, gz_spoil, angle=rotation_angle_rad, axis='z'), *labels)
+            seq.add_block(*rotate(gx_post, gz_spoil, angle=rotation_angle_rad, axis='z'))
 
             # add delay in case TR > min_TR
             if tr_delay > 0:
@@ -329,8 +329,8 @@ def main(
     output_path.mkdir(parents=True, exist_ok=True)
 
     # delete existing header file
-    if (output_path / Path(filename + '.mrd')).exists():
-        (output_path / Path(filename + '.mrd')).unlink()
+    if (output_path / Path(filename + '_header.h5')).exists():
+        (output_path / Path(filename + '_header.h5')).unlink()
 
     seq, min_te, min_tr = radial_flash_kernel(
         system=system,
@@ -353,7 +353,7 @@ def main(
         rf_spoiling_phase_increment=rf_spoiling_phase_increment,
         gz_spoil_duration=gz_spoil_duration,
         gz_spoil_area=gz_spoil_area,
-        mrd_header_file=output_path / Path(filename + '.mrd'),
+        mrd_header_file=output_path / Path(filename + '_header.h5'),
     )
 
     # check timing of the sequence
@@ -371,7 +371,7 @@ def main(
         print(seq.test_report())
 
     # write all required parameters in the seq-file header/definitions
-    seq.set_definition('FOV', [fov_xy, fov_xy, slice_thickness])
+    seq.set_definition('FOV', [fov_xy, fov_xy, slice_thickness * n_slices])
     seq.set_definition('ReconMatrix', (n_readout, n_readout, 1))
     seq.set_definition('SliceThickness', slice_thickness)
     seq.set_definition('TE', te or min_te)
@@ -382,7 +382,7 @@ def main(
     seq.write(str(output_path / filename), create_signature=True)
 
     if show_plots:
-        seq.plot(time_range=(0, 10 * tr or min_tr))
+        seq.plot(time_range=(0, 10 * (tr or min_tr)))
 
     return seq
 
