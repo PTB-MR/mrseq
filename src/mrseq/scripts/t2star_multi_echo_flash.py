@@ -189,7 +189,8 @@ def t2star_multi_echo_flash_kernel(
     min_tr = (
         pp.calc_duration(gz)  # rf pulse
         + gzr_gx_dur  # slice selection re-phasing gradient and readout pre-winder
-        + pp.calc_duration(gx)  # readout gradient
+        + pp.calc_duration(gx) * n_echoes  # readout gradient
+        + pp.calc_duration(gx_between) * (n_echoes - 1)  # readout gradient
         + pp.calc_duration(gz_spoil, gx_post)  # gradient spoiler or readout-re-winder
     )
 
@@ -202,7 +203,7 @@ def t2star_multi_echo_flash_kernel(
 
     print(f'\nCurrent echo time = {current_te * 1000:.2f} ms')
     print(f'Current repetition time = {current_tr * 1000:.2f} ms')
-    print(f'Acquisition window per cardiac cycle = {current_tr * len(pe_steps) * 1000:.2f} ms')
+    print(f'Acquisition window per cardiac cycle = {current_tr * n_pe_points_per_cardiac_cycle * 1000:.2f} ms')
 
     # create header
     if mrd_header_file:
@@ -234,10 +235,11 @@ def t2star_multi_echo_flash_kernel(
     rf_phase = 0
     rf_inc = 0
 
-    for t2_idx in range(5):
+    for cardiac_cycle_idx in range(len(pe_steps) // n_pe_points_per_cardiac_cycle):
         seq.add_block(pp.make_trigger(channel='physio1', duration=cardiac_trigger_delay - current_te / 2))
 
-        for pe_index in pe_steps:
+        for shot_idx in range(n_pe_points_per_cardiac_cycle):
+            pe_index = pe_steps[shot_idx + n_pe_points_per_cardiac_cycle * cardiac_cycle_idx]
             # calculate current phase_offset if rf_spoiling is activated
             if rf_spoiling_phase_increment > 0:
                 rf.phase_offset = rf_phase / 180 * np.pi
@@ -254,7 +256,6 @@ def t2star_multi_echo_flash_kernel(
             labels = []
             labels.append(pp.make_label(label='LIN', type='SET', value=int(pe_index - np.min(pe_steps))))
             labels.append(pp.make_label(label='IMA', type='SET', value=pe_index in pe_fully_sampled_center))
-            labels.append(pp.make_label(type='SET', label='ECO', value=int(t2_idx)))
 
             # calculate current phase encoding gradient
             gy_pre = pp.make_trapezoid(channel='y', area=delta_k * pe_index, duration=gx_pre_duration, system=system)
