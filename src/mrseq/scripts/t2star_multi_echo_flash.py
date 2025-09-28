@@ -124,29 +124,27 @@ def t2star_multi_echo_flash_kernel(
     n_readout_post_echo += np.mod(n_readout_post_echo + 1, 2)  # make odd
     n_readout_pre_echo = int((n_readout * partial_echo_factor) - n_readout_post_echo)
     n_readout_pre_echo += np.mod(n_readout_pre_echo, 2)  # make even
-    partial_echo_factor = (n_readout_pre_echo + 1 + n_readout_post_echo) / n_readout
+    n_readout_with_partial_echo = n_readout_pre_echo + 1 + n_readout_post_echo
+
+    gx_flat_area = n_readout_with_partial_echo * delta_k
+    gx_pre_ratio = (n_readout_pre_echo + 1) / n_readout_with_partial_echo
+    gx_post_ratio = n_readout_post_echo / n_readout_with_partial_echo
 
     gx = pp.make_trapezoid(
         channel='x',
-        flat_area=(n_readout_pre_echo + 1 + n_readout_post_echo) * delta_k,
+        flat_area=gx_flat_area * delta_k,
         flat_time=gx_flat_time,
         system=system,
     )
-    n_readout_with_oversampling = int((n_readout_pre_echo + 1 + n_readout_post_echo) * readout_oversampling)
+    n_readout_with_oversampling = int(n_readout_with_partial_echo * readout_oversampling)
     adc = pp.make_adc(num_samples=n_readout_with_oversampling, duration=gx.flat_time, delay=gx.rise_time, system=system)
 
     # create frequency encoding pre- and re-winder gradient
     gx_pre = pp.make_trapezoid(
-        channel='x',
-        area=-gx.area / ((n_readout_pre_echo + 1 + n_readout_post_echo) / (n_readout_pre_echo + 1)) - delta_k / 2,
-        duration=gx_pre_duration,
-        system=system,
+        channel='x', area=-gx.area * gx_pre_ratio - delta_k / 2, duration=gx_pre_duration, system=system
     )
     gx_post = pp.make_trapezoid(
-        channel='x',
-        area=-gx.area / ((n_readout_pre_echo + 1 + n_readout_post_echo) / n_readout_post_echo) + delta_k / 2,
-        duration=gx_pre_duration,
-        system=system,
+        channel='x', area=-gx.area * gx_post_ratio + delta_k / 2, duration=gx_pre_duration, system=system
     )
     gx_between = pp.make_trapezoid(
         channel='x', area=gx_pre.area - gx_post.area, duration=gx_pre_duration, system=system
