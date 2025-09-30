@@ -130,12 +130,7 @@ def t2star_multi_echo_flash_kernel(
     gx_pre_ratio = (n_readout_pre_echo + 1) / n_readout_with_partial_echo
     gx_post_ratio = n_readout_post_echo / n_readout_with_partial_echo
 
-    gx = pp.make_trapezoid(
-        channel='x',
-        flat_area=gx_flat_area * delta_k,
-        flat_time=gx_flat_time,
-        system=system,
-    )
+    gx = pp.make_trapezoid(channel='x', flat_area=gx_flat_area, flat_time=gx_flat_time, system=system)
     n_readout_with_oversampling = int(n_readout_with_partial_echo * readout_oversampling)
     adc = pp.make_adc(num_samples=n_readout_with_oversampling, duration=gx.flat_time, delay=gx.rise_time, system=system)
 
