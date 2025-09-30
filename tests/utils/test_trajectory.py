@@ -1,7 +1,10 @@
 """Tests for sequence helper functions."""
 
 import numpy as np
+import pypulseq as pp
 import pytest
+from mrseq.utils import sys_defaults
+from mrseq.utils.trajectory import MultiGradientEcho
 from mrseq.utils.trajectory import cartesian_phase_encoding
 
 
@@ -52,3 +55,11 @@ def test_cartesian_phase_encoding_integer_shots(pattern: str, n_phase_encoding_p
         n_phase_encoding_per_shot=n_phase_encoding_per_shot,
     )
     assert np.mod(len(pe), n_phase_encoding_per_shot) == 0
+
+
+def test_multi_gradient_echo():
+    """Test multi-echo gradient echo readout."""
+    seq = pp.Sequence(system=sys_defaults)
+    multi_gradient_echo = MultiGradientEcho()
+    seq, _ = multi_gradient_echo.add_to_seq(seq, n_echoes=3)
+    assert seq is not None
