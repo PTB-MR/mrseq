@@ -7,6 +7,7 @@ import numpy as np
 import pypulseq as pp
 from pypulseq.rotate import rotate
 
+from mrseq.utils import find_gx_flat_time_on_adc_raster
 from mrseq.utils import round_to_raster
 from mrseq.utils import sys_defaults
 from mrseq.utils.create_ismrmrd_header import create_header
@@ -268,6 +269,7 @@ def main(
     n_spokes: int = 128,
     slice_thickness: float = 8e-3,
     n_slices: int = 1,
+    receiver_bandwidth_per_pixel: float = 800,  # Hz/pixel
     show_plots: bool = True,
     test_report: bool = True,
     timing_check: bool = True,
@@ -292,6 +294,8 @@ def main(
         Slice thickness of the 2D slice (in meters).
     n_slices
         Number of slices.
+    receiver_bandwidth_per_pixel
+        Desired receiver bandwidth per pixel (in Hz/pixel). This is used to calculate the readout duration.
     show_plots
         Toggles sequence plot.
     test_report
@@ -302,11 +306,6 @@ def main(
     if system is None:
         system = sys_defaults
 
-    # define ADC and gradient timing
-    adc_dwell = system.grad_raster_time
-    gx_pre_duration = 1.0e-3  # duration of readout pre-winder gradient [s]
-    gx_flat_time = n_readout * adc_dwell  # flat time of readout gradient [s]
-
     # define settings of rf excitation pulse
     rf_duration = 1.28e-3  # duration of the rf excitation pulse [s]
     rf_flip_angle = 12  # flip angle of rf excitation pulse [°]
@@ -314,6 +313,14 @@ def main(
     rf_apodization = 0.5  # apodization factor of rf excitation pulse
     readout_oversampling = 2  # readout oversampling factor, commonly 2. This reduces aliasing artifacts.
     spoke_angle = np.pi / 180 * (180 * 0.618034)
+
+    # define ADC and gradient timing
+    n_readout_with_oversampling = int(n_readout * readout_oversampling)
+    adc_dwell_time = 1.0 / (receiver_bandwidth_per_pixel * n_readout_with_oversampling)
+    gx_pre_duration = 1.0e-3  # duration of readout pre-winder gradient [s]
+    gx_flat_time, adc_dwell_time = find_gx_flat_time_on_adc_raster(
+        n_readout_with_oversampling, adc_dwell_time, system.grad_raster_time, system.adc_raster_time
+    )
 
     n_dummy_excitations = 20  # number of dummy excitations before data acquisition to ensure steady state
 

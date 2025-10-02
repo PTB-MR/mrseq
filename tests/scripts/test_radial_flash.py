@@ -3,7 +3,7 @@
 import pytest
 from mrseq.scripts.radial_flash import main as create_seq
 
-EXPECTED_DUR = 0.64768  # defined 2025-09-22
+EXPECTED_DUR = 0.74888  # defined 2025-01-02
 
 
 def test_default_seq_duration(system_defaults):
