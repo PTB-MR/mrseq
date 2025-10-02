@@ -172,86 +172,102 @@ def t1_molli_bssfp_kernel(
     # Create inversion pulse
     t1_inv_prep, block_duration, time_since_inversion = add_t1_inv_prep(system=system)
 
-    # first 5 images
-    for cardiac_index in range(5):
-        if cardiac_index == 0:
-            # add trigger
-            current_trig_delay = round_to_raster(
-                cardiac_trigger_delay
-                - block_duration
-                - n_bssfp_startup_pulses * current_tr
-                - current_te
-                - (inversion_times[0] - time_since_inversion),
-                raster_time=system.block_duration_raster,
-            )
-            seq.add_block(pp.make_trigger(channel='physio1', duration=current_trig_delay))
-
-            # add inversion pulse
-            for idx in t1_inv_prep.block_events:
-                seq.add_block(t1_inv_prep.get_block(idx))
-
-            # wait until inversion time is reached
-            seq.add_block(
-                pp.make_delay(
-                    round_to_raster(inversion_times[0] - time_since_inversion, raster_time=system.block_duration_raster)
+    # In the first part 5 images are acquired in 5 cardiac cycles, followed by 3 cardiac cycles without data
+    # acquisition for signal recovery. Then 3 images are acquired in 3 cardiac cycles in the second part.
+    for part_idx, n_cycles in enumerate((5, 3)):
+        for cardiac_index in range(n_cycles):
+            if cardiac_index == 0:
+                # add trigger
+                current_trig_delay = round_to_raster(
+                    cardiac_trigger_delay
+                    - block_duration
+                    - n_bssfp_startup_pulses * current_tr
+                    - current_te
+                    - (inversion_times[part_idx] - time_since_inversion),
+                    raster_time=system.block_duration_raster,
                 )
-            )
-        else:
-            current_trig_delay = round_to_raster(
-                cardiac_trigger_delay - n_bssfp_startup_pulses * current_tr - current_te,
-                raster_time=system.block_duration_raster,
-            )
-            seq.add_block(pp.make_trigger(channel='physio1', duration=current_trig_delay))
+                seq.add_block(pp.make_trigger(channel='physio1', duration=current_trig_delay))
 
-        rf_signal = rf.signal.copy()
-        for pe_index in range(-n_bssfp_startup_pulses, len(pe_steps)):
-            # add slice selective excitation pulse
-            if pe_index < 0:
-                # use linear flip angle ramp for bSSFP startup pulses
-                rf.signal = rf_signal * 1 / n_bssfp_startup_pulses * (n_bssfp_startup_pulses + pe_index + 1)
+                # add inversion pulse
+                for idx in t1_inv_prep.block_events:
+                    seq.add_block(t1_inv_prep.get_block(idx))
+
+                # wait until inversion time is reached
+                seq.add_block(
+                    pp.make_delay(
+                        round_to_raster(
+                            inversion_times[0] - time_since_inversion, raster_time=system.block_duration_raster
+                        )
+                    )
+                )
             else:
-                rf.signal = rf_signal
-            if np.mod(pe_index, 2) == 0:
-                rf.phase_offset = -np.pi
-                adc.phase_offset = -np.pi
-            else:
-                rf.phase_offset = 0.0
-                adc.phase_offset = 0.0
-            seq.add_block(rf, gz)
+                current_trig_delay = round_to_raster(
+                    cardiac_trigger_delay - n_bssfp_startup_pulses * current_tr - current_te,
+                    raster_time=system.block_duration_raster,
+                )
+                seq.add_block(pp.make_trigger(channel='physio1', duration=current_trig_delay))
 
-            # set labels for the next spoke
-            labels = []
-            labels.append(pp.make_label(label='LIN', type='SET', value=int(pe_steps[pe_index] - np.min(pe_steps))))
-            labels.append(pp.make_label(label='IMA', type='SET', value=pe_steps[pe_index] in pe_fully_sampled_center))
-            labels.append(pp.make_label(type='SET', label='ECO', value=int(cardiac_index)))
+            rf_signal = rf.signal.copy()
+            for pe_index in range(-n_bssfp_startup_pulses, len(pe_steps)):
+                # add slice selective excitation pulse
+                if pe_index < 0:
+                    # use linear flip angle ramp for bSSFP startup pulses
+                    rf.signal = rf_signal * 1 / n_bssfp_startup_pulses * (n_bssfp_startup_pulses + pe_index + 1)
+                else:
+                    rf.signal = rf_signal
+                if np.mod(pe_index, 2) == 0:
+                    rf.phase_offset = -np.pi
+                    adc.phase_offset = -np.pi
+                else:
+                    rf.phase_offset = 0.0
+                    adc.phase_offset = 0.0
+                seq.add_block(rf, gz)
 
-            # calculate current phase encoding gradient
-            gy_pre = pp.make_trapezoid(
-                channel='y',
-                area=delta_k * pe_steps[pe_index if pe_index >= 0 else 0],
-                duration=gx_pre_duration,
-                system=system,
-            )
+                # set labels for the next spoke
+                labels = []
+                labels.append(pp.make_label(label='LIN', type='SET', value=int(pe_steps[pe_index] - np.min(pe_steps))))
+                labels.append(
+                    pp.make_label(label='IMA', type='SET', value=pe_steps[pe_index] in pe_fully_sampled_center)
+                )
+                labels.append(pp.make_label(type='SET', label='ECO', value=int(cardiac_index)))
 
-            if te is not None:
-                seq.add_block(gzr)
-                seq.add_block(pp.make_delay(te_delay))
-                seq.add_block(gx_pre, gy_pre, *labels)
-            else:
-                seq.add_block(gx_pre, gy_pre, gzr, *labels)
+                # calculate current phase encoding gradient
+                gy_pre = pp.make_trapezoid(
+                    channel='y',
+                    area=delta_k * pe_steps[pe_index if pe_index >= 0 else 0],
+                    duration=gx_pre_duration,
+                    system=system,
+                )
 
-            # add the readout gradient and ADC
-            if pe_index >= 0:
-                seq.add_block(gx, adc)
-            else:
-                seq.add_block(gx)
+                if te is not None:
+                    seq.add_block(gzr)
+                    seq.add_block(pp.make_delay(te_delay))
+                    seq.add_block(gx_pre, gy_pre, *labels)
+                else:
+                    seq.add_block(gx_pre, gy_pre, gzr, *labels)
 
-            gy_pre.amplitude = -gy_pre.amplitude
-            seq.add_block(gx_post, gy_pre, gzr)
+                # add the readout gradient and ADC
+                if pe_index >= 0:
+                    seq.add_block(gx, adc)
+                else:
+                    seq.add_block(gx)
 
-            # add delay in case TR > min_TR
-            if tr_delay > 0:
-                seq.add_block(pp.make_delay(tr_delay))
+                gy_pre.amplitude = -gy_pre.amplitude
+                seq.add_block(gx_post, gy_pre, gzr)
+
+                # add delay in case TR > min_TR
+                if tr_delay > 0:
+                    seq.add_block(pp.make_delay(tr_delay))
+
+        # add three cardiac cycles for signal recovery
+        if part_idx == 0:
+            for _cardiac_index in range(3):
+                seq.add_block(
+                    pp.make_trigger(
+                        channel='physio1',
+                        duration=round_to_raster(cardiac_trigger_delay, raster_time=system.block_duration_raster),
+                    )
+                )
 
     return seq, min_te, min_tr
 
@@ -312,7 +328,7 @@ def main(
         inversion_times = [0.1, 0.18]
 
     # define settings of rf excitation pulse
-    rf_duration = 0.8e-3  # duration of the rf excitation pulse [s]
+    rf_duration = 0.5e-3  # duration of the rf excitation pulse [s]
     rf_flip_angle = 35  # flip angle of rf excitation pulse [°]
     rf_bwt = 1.5  # bandwidth-time product of rf excitation pulse [Hz*s]
     rf_apodization = 0.5  # apodization factor of rf excitation pulse
@@ -323,7 +339,7 @@ def main(
     adc_dwell_time = round_to_raster(
         1.0 / (receiver_bandwidth_per_pixel * n_readout_with_oversampling), system.adc_raster_time
     )
-    gx_pre_duration = 1.0e-3  # duration of readout pre-winder gradient [s]
+    gx_pre_duration = 0.72e-3  # duration of readout pre-winder gradient [s]
     gx_flat_time, adc_dwell_time = find_gx_flat_time_on_adc_raster(
         n_readout_with_oversampling, adc_dwell_time, system.grad_raster_time, system.adc_raster_time
     )
