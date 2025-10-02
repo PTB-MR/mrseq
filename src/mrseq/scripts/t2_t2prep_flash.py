@@ -6,6 +6,7 @@ import numpy as np
 import pypulseq as pp
 
 from mrseq.preparations.t2_prep import add_t2_prep
+from mrseq.utils import find_gx_flat_time_on_adc_raster
 from mrseq.utils import round_to_raster
 from mrseq.utils import sys_defaults
 from mrseq.utils.trajectory import cartesian_phase_encoding
@@ -186,17 +187,22 @@ def t2_t2prep_flash_kernel(
         if t2_prep_echo_time > 0:
             # get prep block duration and calculate corresponding trigger delay
             t2prep_block, prep_dur = add_t2_prep(echo_time=t2_prep_echo_time, system=system)
-            current_trig_delay = cardiac_trigger_delay - prep_dur
+            current_trig_delay = round_to_raster(
+                cardiac_trigger_delay - prep_dur - current_te / 2, raster_time=system.block_duration_raster
+            )
 
             # add trigger
-            seq.add_block(pp.make_trigger(channel='physio1', duration=current_trig_delay - current_te / 2))
+            seq.add_block(pp.make_trigger(channel='physio1', duration=current_trig_delay))
 
             # add all events of T2prep block
             for idx in t2prep_block.block_events:
                 seq.add_block(t2prep_block.get_block(idx))
 
         else:
-            seq.add_block(pp.make_trigger(channel='physio1', duration=cardiac_trigger_delay - current_te / 2))
+            current_trig_delay = round_to_raster(
+                cardiac_trigger_delay - current_te / 2, raster_time=system.block_duration_raster
+            )
+            seq.add_block(pp.make_trigger(channel='physio1', duration=current_trig_delay))
 
         for pe_index_ in pe_steps:
             # calculate current phase_offset if rf_spoiling is activated
@@ -258,6 +264,7 @@ def main(
     acceleration: int = 2,
     n_fully_sampled_center: int = 12,
     slice_thickness: float = 8e-3,
+    receiver_bandwidth_per_pixel: float = 800,  # Hz/pixel
     show_plots: bool = True,
     test_report: bool = True,
     timing_check: bool = True,
@@ -286,6 +293,8 @@ def main(
         Number of phsae encoding points in the fully sampled center. This will reduce the overall undersampling factor.
     slice_thickness
         Slice thickness of the 2D slice (in meters).
+    receiver_bandwidth_per_pixel
+        Desired receiver bandwidth per pixel (in Hz/pixel). This is used to calculate the readout duration.
     show_plots
         Toggles sequence plot.
     test_report
@@ -301,17 +310,22 @@ def main(
 
     n_recovery_cardiac_cycles = 3
 
-    # define ADC and gradient timing
-    adc_dwell = system.grad_raster_time
-    gx_pre_duration = 0.8e-3  # duration of readout pre-winder gradient [s]
-    gx_flat_time = n_readout * adc_dwell  # flat time of readout gradient [s]
-
     # define settings of rf excitation pulse
     rf_duration = 1.28e-3  # duration of the rf excitation pulse [s]
     rf_flip_angle = 12  # flip angle of rf excitation pulse [°]
     rf_bwt = 4  # bandwidth-time product of rf excitation pulse [Hz*s]
     rf_apodization = 0.5  # apodization factor of rf excitation pulse
     readout_oversampling = 2  # readout oversampling factor, commonly 2. This reduces aliasing artifacts.
+
+    # define ADC and gradient timing
+    n_readout_with_oversampling = int(n_readout * readout_oversampling)
+    adc_dwell_time = round_to_raster(
+        1.0 / (receiver_bandwidth_per_pixel * n_readout_with_oversampling), system.adc_raster_time
+    )
+    gx_pre_duration = 0.8e-3  # duration of readout pre-winder gradient [s]
+    gx_flat_time, adc_dwell_time = find_gx_flat_time_on_adc_raster(
+        n_readout_with_oversampling, adc_dwell_time, system.grad_raster_time, system.adc_raster_time
+    )
 
     # define spoiling
     gz_spoil_duration = 0.8e-3  # duration of spoiler gradient [s]

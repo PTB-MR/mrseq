@@ -3,7 +3,7 @@
 import pytest
 from mrseq.scripts.t2_t2prep_flash import main as create_seq
 
-EXPECTED_DUR = 4.0626  # defined 2025-09-23
+EXPECTED_DUR = 3.37512  # defined 2025-10-02
 
 
 def test_default_seq_duration(system_defaults):
