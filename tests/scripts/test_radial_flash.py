@@ -26,7 +26,7 @@ def test_seq_creation_error_on_short_tr(system_defaults):
 
 
 def test_seq_predefined_echo_time(system_defaults):
-    """Test if sequence with predefined echo time."""
+    """Test sequence with predefined echo time."""
     seq = create_seq(
         system=system_defaults,
         te=3e-3,

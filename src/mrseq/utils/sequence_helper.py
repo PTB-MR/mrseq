@@ -73,7 +73,7 @@ def find_gx_flat_time_on_adc_raster(
         Adc dwell time matching gx_flat_time / n_readout and on adc raster
     """
     raster_time_ratio = (n_readout * adc_raster_time) / grad_raster_time
-    start_m = int(np.floor(adc_dwell_time / adc_raster_time))
+    start_m = max(int(np.floor(adc_dwell_time / adc_raster_time)), 1)
     # We look for smaller adc_dwell_times
     adc_dwell_time_smaller = None
     for m in np.arange(start_m, 1, -1):
