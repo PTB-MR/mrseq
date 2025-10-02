@@ -5,6 +5,7 @@ from typing import Literal
 import numpy as np
 import pypulseq as pp
 
+from mrseq.utils import find_gx_flat_time_on_adc_raster
 from mrseq.utils import sys_defaults
 
 
@@ -135,7 +136,7 @@ class MultiGradientEcho:
         gx_pre_duration: float = 0.8e-3,
     ):
         """
-        Initialize the ReadoutGradientADC class and compute all required attributes.
+        Initialize the MultiGradientEcho class and compute all required attributes.
 
         Parameters
         ----------
@@ -155,52 +156,62 @@ class MultiGradientEcho:
             Duration of readout pre-winder gradient.
         """
         # set system to default if not provided
-        self.system = sys_defaults if system is None else system
+        self._system = sys_defaults if system is None else system
 
-        self.fov = fov
-        self.n_readout = n_readout
-        self.readout_oversampling = readout_oversampling
-        self.partial_echo_factor = partial_echo_factor
-        self.gx_flat_time = gx_flat_time
-        self.gx_pre_duration = gx_pre_duration
+        self._fov = fov
+        self._n_readout = n_readout
+        self._readout_oversampling = readout_oversampling
+        self._partial_echo_factor = partial_echo_factor
+        self._gx_flat_time = gx_flat_time
+        self._gx_pre_duration = gx_pre_duration
 
-        self.delta_k = 1 / self.fov
+        self._delta_k = 1 / self._fov
 
-        self.n_readout_post_echo = int(self.n_readout / 2)
-        self.n_readout_post_echo += np.mod(self.n_readout_post_echo + 1, 2)  # make odd
-        self.n_readout_pre_echo = int((self.n_readout * self.partial_echo_factor) - self.n_readout_post_echo)
-        self.n_readout_pre_echo += np.mod(self.n_readout_pre_echo, 2)  # make even
-        self.n_readout_with_partial_echo = self.n_readout_pre_echo + 1 + self.n_readout_post_echo
+        self._n_readout_post_echo = int(self._n_readout / 2 - 1)
+        self._n_readout_post_echo += np.mod(self._n_readout_post_echo + 1, 2)  # make odd
+        self._n_readout_pre_echo = int((self._n_readout * self._partial_echo_factor) - self._n_readout_post_echo - 1)
+        self._n_readout_pre_echo += np.mod(self._n_readout_pre_echo, 2)  # make even
+        self._n_readout_with_partial_echo = self._n_readout_pre_echo + 1 + self._n_readout_post_echo
+        self._n_readout_with_oversampling = int(self._n_readout_with_partial_echo * self._readout_oversampling)
 
-        self.gx_flat_area = self.n_readout_with_partial_echo * self.delta_k
-        self.gx_pre_ratio = (self.n_readout_pre_echo + 1) / self.n_readout_with_partial_echo
-        self.gx_post_ratio = self.n_readout_post_echo / self.n_readout_with_partial_echo
+        self._gx_flat_area = self._n_readout_with_partial_echo * self._delta_k
+        self._gx_pre_ratio = self._n_readout_pre_echo / self._n_readout_with_partial_echo
+        self._gx_post_ratio = (self._n_readout_post_echo + 1) / self._n_readout_with_partial_echo
 
-        self.gx = pp.make_trapezoid(
-            channel='x', flat_area=self.gx_flat_area, flat_time=self.gx_flat_time, system=self.system
-        )
-        self.n_readout_with_oversampling = int(self.n_readout_with_partial_echo * self.readout_oversampling)
-        self.adc = pp.make_adc(
-            num_samples=self.n_readout_with_oversampling,
-            duration=self.gx.flat_time,
-            delay=self.gx.rise_time,
-            system=self.system,
+        # adc dwell time has to be on adc raster and gx flat time on gradient raster
+        adc_dwell = self._gx_flat_time / self._n_readout_with_oversampling
+        self._gx_flat_time, adc_dwell = find_gx_flat_time_on_adc_raster(
+            self._n_readout_with_oversampling, adc_dwell, self._system.grad_raster_time, self._system.adc_raster_time
         )
 
-        self.gx_pre = pp.make_trapezoid(
+        self._gx = pp.make_trapezoid(
+            channel='x', flat_area=self._gx_flat_area, flat_time=self._gx_flat_time, system=self._system
+        )
+
+        self._adc = pp.make_adc(
+            num_samples=self._n_readout_with_oversampling,
+            duration=self._gx.flat_time,
+            delay=self._gx.rise_time,
+            system=self._system,
+        )
+
+        self._gx_pre = pp.make_trapezoid(
             channel='x',
-            area=-self.gx.area * self.gx_pre_ratio - self.delta_k / 2,
-            duration=self.gx_pre_duration,
-            system=self.system,
+            area=-self._gx.area * self._gx_pre_ratio - self._delta_k / 2,
+            duration=self._gx_pre_duration,
+            system=self._system,
         )
-        self.gx_post = pp.make_trapezoid(
+        self._gx_post = pp.make_trapezoid(
             channel='x',
-            area=-self.gx.area * self.gx_post_ratio + self.delta_k / 2,
-            duration=self.gx_pre_duration,
-            system=self.system,
+            area=-self._gx.area * self._gx_post_ratio + self._delta_k / 2,
+            duration=self._gx_pre_duration,
+            system=self._system,
         )
-        self.gx_between = pp.make_trapezoid(
-            channel='x', area=self.gx_pre.area - self.gx_post.area, duration=self.gx_pre_duration, system=self.system
+        self._gx_between = pp.make_trapezoid(
+            channel='x',
+            area=self._gx_pre.area - self._gx_post.area,
+            duration=self._gx_pre_duration,
+            system=self._system,
         )
 
     def add_to_seq(self, seq: pp.Sequence, n_echoes: int):
@@ -217,17 +228,19 @@ class MultiGradientEcho:
         -------
         seq
             PyPulseq Sequence object.
+        time_to_echoes
+            Time from beginning of sequence to echoes.
         """
         # readout pre-winder
-        seq.add_block(self.gx_pre)
+        seq.add_block(self._gx_pre)
 
         # add readout gradient and ADC
-        seq, start_time_of_each_gx = self.add_to_seq_without_pre_post_gradient(seq, n_echoes)
+        seq, time_to_echoes = self.add_to_seq_without_pre_post_gradient(seq, n_echoes)
 
         # readout re-winder
-        seq.add_block(self.gx_post)
+        seq.add_block(self._gx_post)
 
-        return seq, start_time_of_each_gx
+        return seq, time_to_echoes
 
     def add_to_seq_without_pre_post_gradient(self, seq: pp.Sequence, n_echoes: int):
         """Add readout gradients without pre- and re-winder gradients.
@@ -246,17 +259,24 @@ class MultiGradientEcho:
         -------
         seq
             PyPulseq Sequence object.
+        time_to_echoes
+            Time from beginning of sequence to echoes.
         """
         # add readout gradient and ADC
-        start_time_of_each_gx = []
+        time_to_echoes = []
         for echo_ in range(n_echoes):
-            start_time_of_each_gx.append(sum(seq.block_durations.values()))
+            start_of_current_gx = sum(seq.block_durations.values())
             gx_sign = (-1) ** echo_
             labels = []
             labels.append(pp.make_label(type='SET', label='REV', value=gx_sign == -1))
-            labels.append(pp.make_label(type='SET', label='ECO', value=echo_))
-            seq.add_block(pp.scale_grad(self.gx, gx_sign), self.adc, *labels)
+            labels.append(pp.make_label(label='REV', type='SET', value=gx_sign == -1))
+            labels.append(pp.make_label(label='ECO', type='SET', value=echo_))
+            seq.add_block(pp.scale_grad(self._gx, gx_sign), self._adc, *labels)
+            time_to_echoes.append(
+                start_of_current_gx + self._adc.delay + self._n_readout_pre_echo * self._adc.dwell + self._adc.dwell / 2
+            )
+            start_of_current_gx = sum(seq.block_durations.values())
             if echo_ < n_echoes - 1:
-                seq.add_block(pp.scale_grad(self.gx_between, -gx_sign))
+                seq.add_block(pp.scale_grad(self._gx_between, -gx_sign))
 
-        return seq, start_time_of_each_gx
+        return seq, time_to_echoes

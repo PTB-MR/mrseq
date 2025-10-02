@@ -58,8 +58,95 @@ def test_cartesian_phase_encoding_integer_shots(pattern: str, n_phase_encoding_p
 
 
 def test_multi_gradient_echo():
-    """Test multi-echo gradient echo readout."""
+    """Test multi-echo gradient echo readout as part of a simple sequence."""
     seq = pp.Sequence(system=sys_defaults)
-    multi_gradient_echo = MultiGradientEcho()
-    seq, _ = multi_gradient_echo.add_to_seq(seq, n_echoes=3)
+    rf = pp.make_block_pulse(
+        flip_angle=np.pi,
+        delay=sys_defaults.rf_dead_time,
+        duration=2e-3,
+        phase_offset=0.0,
+        system=sys_defaults,
+    )
+    seq.add_block(rf)
+    mecho = MultiGradientEcho()
+    seq, _ = mecho.add_to_seq(seq, n_echoes=3)
+    ok, error_report = seq.check_timing()
+    if not ok:
+        print('\nTiming check failed! Error listing follows\n')
+        print(error_report)
+    assert ok
+
+
+def test_multi_gradient_echo_timing():
+    """Test that zero crossing of gradient moment coincides with echo time and correct adc sample."""
+    n_echoes = 5
+    readout_oversampling = 1
+    n_readout = 128
+    seq = pp.Sequence(system=sys_defaults)
+    mecho = MultiGradientEcho(readout_oversampling=readout_oversampling)
+    seq, time_to_echoes = mecho.add_to_seq(seq, n_echoes)
+
+    from scipy.signal import argrelextrema
+
+    # Get full waveform for readout gradient
+    w = seq.waveforms_and_times()
+    gx_waveform = w[0][0][1]
+    gx_waveform_time = w[0][0][0]
+
+    # Find k0-crossings
+    max_grad = np.max(np.abs(gx_waveform))
+    dt = np.arange(gx_waveform_time[0], gx_waveform_time[-1], step=mecho._adc.dwell / 10)
+    gx_waveform_intp = np.interp(dt, gx_waveform_time, gx_waveform / max_grad)
+    m0_intp = np.cumsum(gx_waveform_intp) / len(gx_waveform_intp)
+    k0_idx = argrelextrema(np.abs(m0_intp), np.less, order=100)[0]
+
+    import matplotlib.pyplot as plt
+
+    idx = 0
+    fig, ax = plt.subplots(3, 1, sharex=True)
+    ax[0].plot(w[0][idx][0], w[0][idx][1] / max_grad, 'o-')
+    ax[1].plot(dt, gx_waveform_intp)
+    ax[2].plot(dt, m0_intp)
+    ax[2].plot([dt[0], dt[-1]], [0, 0], 'k--')
+    for k0 in k0_idx:
+        ax[0].plot([dt[k0], dt[k0]], [-1, 1], 'r--')
+        ax[1].plot([dt[k0], dt[k0]], [-1, 1], 'r--')
+        ax[2].plot([dt[k0], dt[k0]], [-0.1, 0.1], 'r--')
+
+    # Calculate start of each adc
+    tstart = pp.calc_duration(mecho._gx_pre)
+    for echo in range(n_echoes):
+        for n in range(mecho._n_readout_pre_echo):
+            ct = tstart + mecho._adc.delay + n * mecho._adc.dwell + mecho._adc.dwell / 2
+            ax[0].plot([ct, ct], [-1, 1], 'b:')
+
+        ct = tstart + mecho._adc.delay + (mecho._n_readout_pre_echo) * mecho._adc.dwell + mecho._adc.dwell / 2
+        ax[0].plot([ct, ct], [-1, 1], 'm:')
+
+        for n in range(mecho._n_readout_post_echo):
+            ct = (
+                tstart
+                + mecho._adc.delay
+                + n * mecho._adc.dwell
+                + (mecho._n_readout_pre_echo + 1) * mecho._adc.dwell
+                + mecho._adc.dwell / 2
+            )
+            ax[0].plot([ct, ct], [-1, 1], 'c:')
+
+        tstart += pp.calc_duration(mecho._gx) + pp.calc_duration(mecho._gx_between)
+
+    # Zero-crossing of the readout gradient should be within +/- .5 adc dwell time of the k-space center sample which is
+    # the (_n_readout_pre_echo + 1)th sample. This should also be the same as the time_to_echo - time
+    assert n_echoes == len(k0_idx)
+    current_time = pp.calc_duration(mecho._gx_pre)
+    for echo in range(n_echoes):
+        time_of_k0_adc_sample = (
+            current_time + mecho._adc.delay + mecho._n_readout_pre_echo * mecho._adc.dwell + mecho._adc.dwell / 2
+        )
+        print(dt[k0_idx[echo]], time_of_k0_adc_sample, mecho._adc.dwell)
+        assert np.isclose(dt[k0_idx[echo]], time_of_k0_adc_sample, atol=mecho._adc.dwell / 2)
+        assert np.isclose(dt[k0_idx[echo]], time_to_echoes[echo], atol=mecho._adc.dwell / 2)
+
+        current_time += pp.calc_duration(mecho._gx) + pp.calc_duration(mecho._gx_between)
+
     assert seq is not None
