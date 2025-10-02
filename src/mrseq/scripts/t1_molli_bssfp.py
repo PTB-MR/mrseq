@@ -6,6 +6,7 @@ import numpy as np
 import pypulseq as pp
 
 from mrseq.preparations.t1_inv_prep import add_t1_inv_prep
+from mrseq.utils import find_gx_flat_time_on_adc_raster
 from mrseq.utils import round_to_raster
 from mrseq.utils import sys_defaults
 from mrseq.utils.trajectory import cartesian_phase_encoding
@@ -175,12 +176,13 @@ def t1_molli_bssfp_kernel(
     for cardiac_index in range(5):
         if cardiac_index == 0:
             # add trigger
-            current_trig_delay = (
+            current_trig_delay = round_to_raster(
                 cardiac_trigger_delay
                 - block_duration
                 - n_bssfp_startup_pulses * current_tr
                 - current_te
-                - (inversion_times[0] - time_since_inversion)
+                - (inversion_times[0] - time_since_inversion),
+                raster_time=system.block_duration_raster,
             )
             seq.add_block(pp.make_trigger(channel='physio1', duration=current_trig_delay))
 
@@ -189,9 +191,16 @@ def t1_molli_bssfp_kernel(
                 seq.add_block(t1_inv_prep.get_block(idx))
 
             # wait until inversion time is reached
-            seq.add_block(pp.make_delay(inversion_times[0] - time_since_inversion))
+            seq.add_block(
+                pp.make_delay(
+                    round_to_raster(inversion_times[0] - time_since_inversion, raster_time=system.block_duration_raster)
+                )
+            )
         else:
-            current_trig_delay = cardiac_trigger_delay - n_bssfp_startup_pulses * current_tr - current_te
+            current_trig_delay = round_to_raster(
+                cardiac_trigger_delay - n_bssfp_startup_pulses * current_tr - current_te,
+                raster_time=system.block_duration_raster,
+            )
             seq.add_block(pp.make_trigger(channel='physio1', duration=current_trig_delay))
 
         rf_signal = rf.signal.copy()
@@ -311,13 +320,13 @@ def main(
 
     # define ADC and gradient timing
     n_readout_with_oversampling = int(n_readout * readout_oversampling)
-    adc_dwell = round_to_raster(
-        1.0 / (receiver_bandwidth_per_pixel * n_readout_with_oversampling), system.adc_raster_time, method='ceil'
-    )  # dwell time of ADC [s]
-    gx_pre_duration = 0.8e-3  # duration of readout pre-winder gradient [s]
-    gx_flat_time = round_to_raster(
-        n_readout_with_oversampling * adc_dwell, system.grad_raster_time
-    )  # flat time of readout gradient [s]
+    adc_dwell_time = round_to_raster(
+        1.0 / (receiver_bandwidth_per_pixel * n_readout_with_oversampling), system.adc_raster_time
+    )
+    gx_pre_duration = 1.0e-3  # duration of readout pre-winder gradient [s]
+    gx_flat_time, adc_dwell_time = find_gx_flat_time_on_adc_raster(
+        n_readout_with_oversampling, adc_dwell_time, system.grad_raster_time, system.adc_raster_time
+    )
 
     n_bssfp_startup_pulses = 11  # number of bSSFP startup pulses to reach steady state.
 
