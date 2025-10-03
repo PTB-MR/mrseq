@@ -10,12 +10,14 @@ from mrseq.utils import find_gx_flat_time_on_adc_raster
 from mrseq.utils import round_to_raster
 from mrseq.utils import sys_defaults
 from mrseq.utils.create_ismrmrd_header import create_header
+from mrseq.utils.trajectory import MultiGradientEcho
 from mrseq.utils.trajectory import cartesian_phase_encoding
 
 
 def t2star_multi_echo_flash_kernel(
     system: pp.Opts,
     te: float | None,
+    delta_te: float | None,
     tr: float | None,
     n_echoes: int,
     n_recovery_cardiac_cycles: int,
@@ -47,6 +49,8 @@ def t2star_multi_echo_flash_kernel(
         PyPulseq system limits object.
     te
         Desired echo time (TE) (in seconds). Minimum echo time is used if set to None.
+    delta_te
+            Desired echo spacing (in seconds). Minimum echo spacing is used if set to None.
     tr
         Desired repetition time (TR) (in seconds).
     n_echoes
@@ -62,7 +66,7 @@ def t2star_multi_echo_flash_kernel(
     readout_oversampling
         Readout oversampling factor, commonly 2. This reduces aliasing artifacts.
     partial_echo_factor
-        Partial echo factor, commonly between 0.75 and 1. This reduces the echo time.
+        Partial echo factor, commonly between 0.7 and 1. This reduces the echo time.
     acceleration
         Uniform undersampling factor along the phase encoding direction
     n_fully_sampled_center
@@ -118,39 +122,15 @@ def t2star_multi_echo_flash_kernel(
         use='excitation',
     )
 
-    # create readout gradient and ADC
-    delta_k = 1 / fov_xy
-
-    n_readout_post_echo = int(n_readout / 2)
-    n_readout_post_echo += np.mod(n_readout_post_echo + 1, 2)  # make odd
-    n_readout_pre_echo = int((n_readout * partial_echo_factor) - n_readout_post_echo)
-    n_readout_pre_echo += np.mod(n_readout_pre_echo, 2)  # make even
-    n_readout_with_partial_echo = n_readout_pre_echo + 1 + n_readout_post_echo
-
-    gx_flat_area = n_readout_with_partial_echo * delta_k
-    gx_pre_ratio = (n_readout_pre_echo + 1) / n_readout_with_partial_echo
-    gx_post_ratio = n_readout_post_echo / n_readout_with_partial_echo
-
-    n_readout_with_oversampling = int(n_readout_with_partial_echo * readout_oversampling)
-    gx_flat_time, adc_dwell_time = find_gx_flat_time_on_adc_raster(
-        n_readout_with_oversampling,
-        gx_flat_time / n_readout_with_oversampling,
-        system.grad_raster_time,
-        system.adc_raster_time,
-    )
-
-    gx = pp.make_trapezoid(channel='x', flat_area=gx_flat_area, flat_time=gx_flat_time, system=system)
-    adc = pp.make_adc(num_samples=n_readout_with_oversampling, duration=gx.flat_time, delay=gx.rise_time, system=system)
-
-    # create frequency encoding pre- and re-winder gradient
-    gx_pre = pp.make_trapezoid(
-        channel='x', area=-gx.area * gx_pre_ratio - delta_k / 2, duration=gx_pre_duration, system=system
-    )
-    gx_post = pp.make_trapezoid(
-        channel='x', area=-gx.area * gx_post_ratio + delta_k / 2, duration=gx_pre_duration, system=system
-    )
-    gx_between = pp.make_trapezoid(
-        channel='x', area=gx_pre.area - gx_post.area, duration=gx_pre_duration, system=system
+    multi_echo_gradient = MultiGradientEcho(
+        system=system,
+        delta_te=delta_te,
+        fov=fov_xy,
+        n_readout=n_readout,
+        readout_oversampling=readout_oversampling,
+        partial_echo_factor=partial_echo_factor,
+        gx_flat_time=gx_flat_time,
+        gx_pre_duration=gx_pre_duration,
     )
 
     # create phase encoding steps
@@ -167,17 +147,19 @@ def t2star_multi_echo_flash_kernel(
 
     # calculate minimum echo time
     if te is None:
-        gzr_gx_dur = pp.calc_duration(gzr, gx_pre)  # gzr and gx_pre are applied simultaneously
+        gzr_gx_dur = pp.calc_duration(gzr, multi_echo_gradient._gx_pre)  # gzr and gx_pre are applied simultaneously
     else:
-        gzr_gx_dur = pp.calc_duration(gzr) + pp.calc_duration(gx_pre)  # gzr and gx_pre are applied sequentially
+        gzr_gx_dur = pp.calc_duration(gzr) + pp.calc_duration(
+            multi_echo_gradient._gx_pre
+        )  # gzr and gx_pre are applied sequentially
 
     min_te = (
         rf.shape_dur / 2  # time from center to end of RF pulse
         + max(rf.ringdown_time, gz.fall_time)  # RF ringdown time or gradient fall time
         + gzr_gx_dur  # slice selection re-phasing gradient and readout pre-winder
-        + gx.delay  # potential delay of readout gradient
-        + gx.rise_time  # rise time of readout gradient
-        + (n_readout_pre_echo + 0.5) * adc.dwell  # time from beginning of ADC to time point of k-space center sample
+        + multi_echo_gradient._gx.delay  # potential delay of readout gradient
+        + multi_echo_gradient._gx.rise_time  # rise time of readout gradient
+        + (multi_echo_gradient._n_readout_pre_echo + 0.5) * multi_echo_gradient._adc.dwell
     )
 
     # calculate echo time delay (te_delay)
@@ -190,9 +172,9 @@ def t2star_multi_echo_flash_kernel(
     min_tr = (
         pp.calc_duration(gz)  # rf pulse
         + gzr_gx_dur  # slice selection re-phasing gradient and readout pre-winder
-        + pp.calc_duration(gx) * n_echoes  # readout gradient
-        + pp.calc_duration(gx_between) * (n_echoes - 1)  # readout gradient
-        + pp.calc_duration(gz_spoil, gx_post)  # gradient spoiler or readout-re-winder
+        + pp.calc_duration(multi_echo_gradient._gx) * n_echoes  # readout gradient
+        + pp.calc_duration(multi_echo_gradient._gx_between) * (n_echoes - 1)  # readout gradient
+        + pp.calc_duration(gz_spoil, multi_echo_gradient._gx_post)  # gradient spoiler or readout-re-winder
     )
 
     # calculate repetition time delay (tr_delay)
@@ -213,7 +195,7 @@ def t2star_multi_echo_flash_kernel(
             fov=fov_xy,
             res=fov_xy / n_readout,
             slice_thickness=slice_thickness,
-            dt=adc.dwell,
+            dt=multi_echo_gradient._adc.dwell,
             n_k1=len(pe_steps),
         )
 
@@ -229,7 +211,7 @@ def t2star_multi_echo_flash_kernel(
 
     if mrd_header_file:
         acq = ismrmrd.Acquisition()
-        acq.resize(trajectory_dimensions=2, number_of_samples=adc.num_samples)
+        acq.resize(trajectory_dimensions=2, number_of_samples=multi_echo_gradient._adc.num_samples)
         # prot.append_acquisition(acq)
 
     # choose initial rf phase offset
@@ -251,7 +233,7 @@ def t2star_multi_echo_flash_kernel(
             # calculate current phase_offset if rf_spoiling is activated
             if rf_spoiling_phase_increment > 0:
                 rf.phase_offset = rf_phase / 180 * np.pi
-                adc.phase_offset = rf_phase / 180 * np.pi
+                multi_echo_gradient._adc.phase_offset = rf_phase / 180 * np.pi
 
             # add slice selective excitation pulse
             seq.add_block(rf, gz)
@@ -266,29 +248,20 @@ def t2star_multi_echo_flash_kernel(
             labels.append(pp.make_label(label='IMA', type='SET', value=pe_index in pe_fully_sampled_center))
 
             # calculate current phase encoding gradient
-            gy_pre = pp.make_trapezoid(channel='y', area=delta_k * pe_index, duration=gx_pre_duration, system=system)
+            gy_pre = pp.make_trapezoid(channel='y', area=1 / fov_xy * pe_index, duration=gx_pre_duration, system=system)
 
             if te is not None:
                 seq.add_block(gzr)
                 seq.add_block(pp.make_delay(te_delay))
-                seq.add_block(gx_pre, gy_pre, *labels)
+                seq.add_block(multi_echo_gradient._gx_pre, gy_pre, *labels)
             else:
-                seq.add_block(gx_pre, gy_pre, gzr, *labels)
+                seq.add_block(multi_echo_gradient._gx_pre, gy_pre, gzr, *labels)
 
-            # add readout gradient and ADC
-            tstart_gx = []
-            for echo_ in range(n_echoes):
-                tstart_gx.append(sum(seq.block_durations.values()))
-                gx_sign = (-1) ** echo_
-                labels = []
-                labels.append(pp.make_label(type='SET', label='REV', value=gx_sign == -1))
-                labels.append(pp.make_label(type='SET', label='ECO', value=echo_))
-                seq.add_block(pp.scale_grad(gx, gx_sign), adc, *labels)
-                if echo_ < n_echoes - 1:
-                    seq.add_block(pp.scale_grad(gx_between, -gx_sign))
+            # add readout gradients and ADCs
+            seq, _ = multi_echo_gradient.add_to_seq_without_pre_post_gradient(seq, n_echoes)
 
             gy_pre.amplitude = -gy_pre.amplitude
-            seq.add_block(gx_post, gy_pre, gz_spoil)
+            seq.add_block(multi_echo_gradient._gx_post, gy_pre, gz_spoil)
 
             # add delay in case TR > min_TR
             if tr_delay > 0:
@@ -297,11 +270,11 @@ def t2star_multi_echo_flash_kernel(
             if mrd_header_file:
                 # add acquisitions to metadata
                 k0_trajectory = np.linspace(
-                    -n_readout_pre_echo,
-                    n_readout_post_echo,
-                    n_readout_with_oversampling,
+                    -multi_echo_gradient._n_readout_pre_echo,
+                    multi_echo_gradient._n_readout_post_echo,
+                    multi_echo_gradient._n_readout_with_partial_echo,
                 )
-                cart_trajectory = np.zeros((n_readout_with_oversampling, 2), dtype=np.float32)
+                cart_trajectory = np.zeros((multi_echo_gradient._n_readout_with_partial_echo, 2), dtype=np.float32)
 
                 for echo_ in range(n_echoes):
                     gx_sign = (-1) ** echo_
@@ -309,7 +282,7 @@ def t2star_multi_echo_flash_kernel(
                     cart_trajectory[:, 1] = pe_index
 
                     acq = ismrmrd.Acquisition()
-                    acq.resize(trajectory_dimensions=2, number_of_samples=adc.num_samples)
+                    acq.resize(trajectory_dimensions=2, number_of_samples=multi_echo_gradient._adc.num_samples)
                     acq.traj[:] = cart_trajectory
                     prot.append_acquisition(acq)
 
@@ -323,12 +296,13 @@ def t2star_multi_echo_flash_kernel(
 def main(
     system: pp.Opts | None = None,
     te: float | None = None,
+    delta_te: float | None = None,
     tr: float | None = None,
     n_echoes: int = 3,
     cardiac_trigger_delay: float = 0.4,
     fov_xy: float = 128e-3,
     n_readout: int = 128,
-    partial_echo_factor: float = 0.9,
+    partial_echo_factor: float = 0.7,
     acceleration: int = 2,
     n_fully_sampled_center: int = 12,
     n_pe_points_per_cardiac_cycle: int = 16,
@@ -346,6 +320,8 @@ def main(
         PyPulseq system limits object.
     te
         Desired echo time (TE) (in seconds). Minimum echo time is used if set to None.
+    delta_te
+            Desired echo spacing (in seconds). Minimum echo spacing is used if set to None.
     tr
         Desired repetition time (TR) (in seconds). Minimum repetition time is used if set to None.
     n_echoes
@@ -411,6 +387,7 @@ def main(
     seq, min_te, min_tr = t2star_multi_echo_flash_kernel(
         system=system,
         te=te,
+        delta_te=delta_te,
         tr=tr,
         n_echoes=n_echoes,
         n_recovery_cardiac_cycles=n_recovery_cardiac_cycles,

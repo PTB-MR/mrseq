@@ -220,7 +220,7 @@ class MultiGradientEcho:
         # readout pre-winder
         seq.add_block(self._gx_pre)
 
-        # add readout gradient and ADC
+        # add readout gradients and ADCs
         seq, time_to_echoes = self.add_to_seq_without_pre_post_gradient(seq, n_echoes)
 
         # readout re-winder
