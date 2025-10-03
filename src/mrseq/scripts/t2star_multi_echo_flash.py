@@ -6,6 +6,7 @@ import ismrmrd
 import numpy as np
 import pypulseq as pp
 
+from mrseq.utils import find_gx_flat_time_on_adc_raster
 from mrseq.utils import round_to_raster
 from mrseq.utils import sys_defaults
 from mrseq.utils.create_ismrmrd_header import create_header
@@ -130,8 +131,15 @@ def t2star_multi_echo_flash_kernel(
     gx_pre_ratio = (n_readout_pre_echo + 1) / n_readout_with_partial_echo
     gx_post_ratio = n_readout_post_echo / n_readout_with_partial_echo
 
-    gx = pp.make_trapezoid(channel='x', flat_area=gx_flat_area, flat_time=gx_flat_time, system=system)
     n_readout_with_oversampling = int(n_readout_with_partial_echo * readout_oversampling)
+    gx_flat_time, adc_dwell_time = find_gx_flat_time_on_adc_raster(
+        n_readout_with_oversampling,
+        gx_flat_time / n_readout_with_oversampling,
+        system.grad_raster_time,
+        system.adc_raster_time,
+    )
+
+    gx = pp.make_trapezoid(channel='x', flat_area=gx_flat_area, flat_time=gx_flat_time, system=system)
     adc = pp.make_adc(num_samples=n_readout_with_oversampling, duration=gx.flat_time, delay=gx.rise_time, system=system)
 
     # create frequency encoding pre- and re-winder gradient
@@ -229,7 +237,14 @@ def t2star_multi_echo_flash_kernel(
     rf_inc = 0
 
     for cardiac_cycle_idx in range(len(pe_steps) // n_pe_points_per_cardiac_cycle):
-        seq.add_block(pp.make_trigger(channel='physio1', duration=cardiac_trigger_delay - current_te / 2))
+        seq.add_block(
+            pp.make_trigger(
+                channel='physio1',
+                duration=round_to_raster(
+                    cardiac_trigger_delay - current_te / 2, raster_time=system.block_duration_raster
+                ),
+            )
+        )
 
         for shot_idx in range(n_pe_points_per_cardiac_cycle):
             pe_index = pe_steps[shot_idx + n_pe_points_per_cardiac_cycle * cardiac_cycle_idx]
@@ -318,6 +333,7 @@ def main(
     n_fully_sampled_center: int = 12,
     n_pe_points_per_cardiac_cycle: int = 16,
     slice_thickness: float = 8e-3,
+    receiver_bandwidth_per_pixel: float = 800,  # Hz/pixel
     show_plots: bool = True,
     test_report: bool = True,
     timing_check: bool = True,
@@ -350,6 +366,8 @@ def main(
         Number of phase encoding points per cardiac cycle.
     slice_thickness
         Slice thickness of the 2D slice (in meters).
+    receiver_bandwidth_per_pixel
+        Desired receiver bandwidth per pixel (in Hz/pixel). This is used to calculate the readout duration.
     show_plots
         Toggles sequence plot.
     test_report
@@ -362,17 +380,21 @@ def main(
 
     n_recovery_cardiac_cycles = 3
 
-    # define ADC and gradient timing
-    adc_dwell = system.grad_raster_time
-    gx_pre_duration = 0.8e-3  # duration of readout pre-winder gradient [s]
-    gx_flat_time = n_readout * adc_dwell  # flat time of readout gradient [s]
-
     # define settings of rf excitation pulse
     rf_duration = 1.28e-3  # duration of the rf excitation pulse [s]
     rf_flip_angle = 12  # flip angle of rf excitation pulse [°]
     rf_bwt = 4  # bandwidth-time product of rf excitation pulse [Hz*s]
     rf_apodization = 0.5  # apodization factor of rf excitation pulse
     readout_oversampling = 1  # readout oversampling factor, commonly 2. This reduces aliasing artifacts.
+
+    # this is just approximately, the final calculation is done in the kernel
+    n_readout_with_oversampling = int(n_readout * readout_oversampling * partial_echo_factor)
+    # define ADC and gradient timing
+    adc_dwell_time = 1.0 / (receiver_bandwidth_per_pixel * n_readout_with_oversampling)
+    gx_pre_duration = 0.8e-3  # duration of readout pre-winder gradient [s]
+    gx_flat_time, adc_dwell_time = find_gx_flat_time_on_adc_raster(
+        n_readout_with_oversampling, adc_dwell_time, system.grad_raster_time, system.adc_raster_time
+    )
 
     # define spoiling
     gz_spoil_duration = 0.8e-3  # duration of spoiler gradient [s]
