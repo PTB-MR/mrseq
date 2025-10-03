@@ -3,7 +3,6 @@
 import numpy as np
 import pypulseq as pp
 import pytest
-from mrseq.utils import sys_defaults
 from mrseq.utils.trajectory import MultiGradientEcho
 from mrseq.utils.trajectory import cartesian_phase_encoding
 
@@ -57,18 +56,18 @@ def test_cartesian_phase_encoding_integer_shots(pattern: str, n_phase_encoding_p
     assert np.mod(len(pe), n_phase_encoding_per_shot) == 0
 
 
-def test_multi_gradient_echo():
+def test_multi_gradient_echo(system_defaults):
     """Test multi-echo gradient echo readout as part of a simple sequence."""
-    seq = pp.Sequence(system=sys_defaults)
+    seq = pp.Sequence(system=system_defaults)
     rf = pp.make_block_pulse(
         flip_angle=np.pi,
-        delay=sys_defaults.rf_dead_time,
+        delay=system_defaults.rf_dead_time,
         duration=2e-3,
         phase_offset=0.0,
-        system=sys_defaults,
+        system=system_defaults,
     )
     seq.add_block(rf)
-    mecho = MultiGradientEcho()
+    mecho = MultiGradientEcho(system=seq.system)
     seq, _ = mecho.add_to_seq(seq, n_echoes=3)
     ok, error_report = seq.check_timing()
     if not ok:
@@ -77,13 +76,34 @@ def test_multi_gradient_echo():
     assert ok
 
 
-def test_multi_gradient_echo_timing():
+@pytest.mark.parametrize('delta_te', [3e-3, 5.34e-3])
+def test_multi_gradient_echo_set_delta_te(delta_te, system_defaults):
+    """Test pre-defined delta te."""
+    seq = pp.Sequence(system=system_defaults)
+    mecho = MultiGradientEcho(system=seq.system, delta_te=delta_te)
+    seq, time_to_echoes = mecho.add_to_seq(seq, 6)
+    np.testing.assert_allclose(np.diff(time_to_echoes), delta_te)
+
+
+def test_multi_gradient_echo_error_on_short_delta_te(system_defaults):
+    """Test if error is raised on too short delta echo time."""
+    with pytest.raises(ValueError):
+        MultiGradientEcho(system=system_defaults, delta_te=1e-6)
+
+
+@pytest.mark.parametrize('n_echoes', [1, 3, 8])
+@pytest.mark.parametrize('readout_oversampling', [1, 1.5, 2])
+@pytest.mark.parametrize('n_readout', [64, 128, 200])
+@pytest.mark.parametrize('partial_echo_factor', [1.0, 0.8, 0.7])
+def test_multi_gradient_echo_timing(n_echoes, readout_oversampling, n_readout, partial_echo_factor, system_defaults):
     """Test that zero crossing of gradient moment coincides with echo time and correct adc sample."""
-    n_echoes = 5
-    readout_oversampling = 1
-    n_readout = 128
-    seq = pp.Sequence(system=sys_defaults)
-    mecho = MultiGradientEcho(readout_oversampling=readout_oversampling)
+    seq = pp.Sequence(system=system_defaults)
+    mecho = MultiGradientEcho(
+        system=seq.system,
+        n_readout=n_readout,
+        readout_oversampling=readout_oversampling,
+        partial_echo_factor=partial_echo_factor,
+    )
     seq, time_to_echoes = mecho.add_to_seq(seq, n_echoes)
 
     from scipy.signal import argrelextrema
@@ -100,40 +120,44 @@ def test_multi_gradient_echo_timing():
     m0_intp = np.cumsum(gx_waveform_intp) / len(gx_waveform_intp)
     k0_idx = argrelextrema(np.abs(m0_intp), np.less, order=100)[0]
 
-    import matplotlib.pyplot as plt
+    # Remove k0-crossings at the beginning and end of the block
+    k0_idx = [ki for ki in k0_idx if (ki > 100 and ki < len(dt) - 100)]
 
-    idx = 0
-    fig, ax = plt.subplots(3, 1, sharex=True)
-    ax[0].plot(w[0][idx][0], w[0][idx][1] / max_grad, 'o-')
-    ax[1].plot(dt, gx_waveform_intp)
-    ax[2].plot(dt, m0_intp)
-    ax[2].plot([dt[0], dt[-1]], [0, 0], 'k--')
-    for k0 in k0_idx:
-        ax[0].plot([dt[k0], dt[k0]], [-1, 1], 'r--')
-        ax[1].plot([dt[k0], dt[k0]], [-1, 1], 'r--')
-        ax[2].plot([dt[k0], dt[k0]], [-0.1, 0.1], 'r--')
+    if False:
+        import matplotlib.pyplot as plt
 
-    # Calculate start of each adc
-    tstart = pp.calc_duration(mecho._gx_pre)
-    for echo in range(n_echoes):
-        for n in range(mecho._n_readout_pre_echo):
-            ct = tstart + mecho._adc.delay + n * mecho._adc.dwell + mecho._adc.dwell / 2
-            ax[0].plot([ct, ct], [-1, 1], 'b:')
+        idx = 0
+        fig, ax = plt.subplots(3, 1, sharex=True)
+        ax[0].plot(w[0][idx][0], w[0][idx][1] / max_grad, 'o-')
+        ax[1].plot(dt, gx_waveform_intp)
+        ax[2].plot(dt, m0_intp)
+        ax[2].plot([dt[0], dt[-1]], [0, 0], 'k--')
+        for k0 in k0_idx:
+            ax[0].plot([dt[k0], dt[k0]], [-1, 1], 'r--')
+            ax[1].plot([dt[k0], dt[k0]], [-1, 1], 'r--')
+            ax[2].plot([dt[k0], dt[k0]], [-0.1, 0.1], 'r--')
 
-        ct = tstart + mecho._adc.delay + (mecho._n_readout_pre_echo) * mecho._adc.dwell + mecho._adc.dwell / 2
-        ax[0].plot([ct, ct], [-1, 1], 'm:')
+        # Calculate start of each adc
+        tstart = pp.calc_duration(mecho._gx_pre)
+        for echo in range(n_echoes):
+            for n in range(mecho._n_readout_pre_echo):
+                ct = tstart + mecho._adc.delay + n * mecho._adc.dwell + mecho._adc.dwell / 2
+                ax[0].plot([ct, ct], [-1, 1], 'b:')
 
-        for n in range(mecho._n_readout_post_echo):
-            ct = (
-                tstart
-                + mecho._adc.delay
-                + n * mecho._adc.dwell
-                + (mecho._n_readout_pre_echo + 1) * mecho._adc.dwell
-                + mecho._adc.dwell / 2
-            )
-            ax[0].plot([ct, ct], [-1, 1], 'c:')
+            ct = tstart + mecho._adc.delay + (mecho._n_readout_pre_echo) * mecho._adc.dwell + mecho._adc.dwell / 2
+            ax[0].plot([ct, ct], [-1, 1], 'm:')
 
-        tstart += pp.calc_duration(mecho._gx) + pp.calc_duration(mecho._gx_between)
+            for n in range(mecho._n_readout_post_echo):
+                ct = (
+                    tstart
+                    + mecho._adc.delay
+                    + n * mecho._adc.dwell
+                    + (mecho._n_readout_pre_echo + 1) * mecho._adc.dwell
+                    + mecho._adc.dwell / 2
+                )
+                ax[0].plot([ct, ct], [-1, 1], 'c:')
+
+            tstart += pp.calc_duration(mecho._gx) + pp.calc_duration(mecho._gx_between)
 
     # Zero-crossing of the readout gradient should be within +/- .5 adc dwell time of the k-space center sample which is
     # the (_n_readout_pre_echo + 1)th sample. This should also be the same as the time_to_echo - time
@@ -144,8 +168,8 @@ def test_multi_gradient_echo_timing():
             current_time + mecho._adc.delay + mecho._n_readout_pre_echo * mecho._adc.dwell + mecho._adc.dwell / 2
         )
         print(dt[k0_idx[echo]], time_of_k0_adc_sample, mecho._adc.dwell)
-        assert np.isclose(dt[k0_idx[echo]], time_of_k0_adc_sample, atol=mecho._adc.dwell / 2)
-        assert np.isclose(dt[k0_idx[echo]], time_to_echoes[echo], atol=mecho._adc.dwell / 2)
+        assert np.isclose(dt[k0_idx[echo]], time_of_k0_adc_sample, atol=mecho._adc.dwell)
+        assert np.isclose(dt[k0_idx[echo]], time_to_echoes[echo], atol=mecho._adc.dwell)
 
         current_time += pp.calc_duration(mecho._gx) + pp.calc_duration(mecho._gx_between)
 

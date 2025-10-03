@@ -6,6 +6,7 @@ import numpy as np
 import pypulseq as pp
 
 from mrseq.utils import find_gx_flat_time_on_adc_raster
+from mrseq.utils import round_to_raster
 from mrseq.utils import sys_defaults
 
 
@@ -128,6 +129,7 @@ class MultiGradientEcho:
     def __init__(
         self,
         system: pp.Opts | None = None,
+        delta_te: float | None = None,
         fov: float = 0.256,
         n_readout: int = 128,
         readout_oversampling: float = 2.0,
@@ -142,6 +144,8 @@ class MultiGradientEcho:
         ----------
         system
             PyPulseq system limits object.
+        delta_te
+            Desired echo spacing (in seconds). Minimum echo spacing is used if set to None.
         fov
             Field of view in x direction (in meters).
         n_readout
@@ -165,23 +169,26 @@ class MultiGradientEcho:
         self._gx_flat_time = gx_flat_time
         self._gx_pre_duration = gx_pre_duration
 
-        self._delta_k = 1 / self._fov
+        self._delta_k = 1 / (self._fov * self._readout_oversampling)
 
-        self._n_readout_post_echo = int(self._n_readout / 2 - 1)
+        self._n_readout_post_echo = int(self._n_readout * self._readout_oversampling / 2 - 1)
         self._n_readout_post_echo += np.mod(self._n_readout_post_echo + 1, 2)  # make odd
-        self._n_readout_pre_echo = int((self._n_readout * self._partial_echo_factor) - self._n_readout_post_echo - 1)
+        self._n_readout_pre_echo = int(
+            (self._n_readout * self._partial_echo_factor * self._readout_oversampling) - self._n_readout_post_echo - 1
+        )
         self._n_readout_pre_echo += np.mod(self._n_readout_pre_echo, 2)  # make even
         self._n_readout_with_partial_echo = self._n_readout_pre_echo + 1 + self._n_readout_post_echo
-        self._n_readout_with_oversampling = int(self._n_readout_with_partial_echo * self._readout_oversampling)
 
         self._gx_flat_area = self._n_readout_with_partial_echo * self._delta_k
         self._gx_pre_ratio = self._n_readout_pre_echo / self._n_readout_with_partial_echo
         self._gx_post_ratio = (self._n_readout_post_echo + 1) / self._n_readout_with_partial_echo
 
         # adc dwell time has to be on adc raster and gx flat time on gradient raster
-        adc_dwell = self._gx_flat_time / self._n_readout_with_oversampling
-        self._gx_flat_time, adc_dwell = find_gx_flat_time_on_adc_raster(
-            self._n_readout_with_oversampling, adc_dwell, self._system.grad_raster_time, self._system.adc_raster_time
+        self._gx_flat_time, adc_dwell_time = find_gx_flat_time_on_adc_raster(
+            self._n_readout_with_partial_echo,
+            self._gx_flat_time / self._n_readout_with_partial_echo,
+            self._system.grad_raster_time,
+            self._system.adc_raster_time,
         )
 
         self._gx = pp.make_trapezoid(
@@ -189,7 +196,7 @@ class MultiGradientEcho:
         )
 
         self._adc = pp.make_adc(
-            num_samples=self._n_readout_with_oversampling,
+            num_samples=self._n_readout_with_partial_echo,
             duration=self._gx.flat_time,
             delay=self._gx.rise_time,
             system=self._system,
@@ -213,6 +220,15 @@ class MultiGradientEcho:
             duration=self._gx_pre_duration,
             system=self._system,
         )
+
+        min_delta_te = pp.calc_duration(self._gx) + pp.calc_duration(self._gx_between)
+        self._te_delay = (
+            0 if delta_te is None else round_to_raster(delta_te - min_delta_te, system.block_duration_raster)
+        )
+        if not self._te_delay >= 0:
+            raise ValueError(
+                f'Delta TE must be larger than {min_delta_te * 1000:.2f} ms. Current value is {delta_te * 1000:.2f} ms.'
+            )
 
     def add_to_seq(self, seq: pp.Sequence, n_echoes: int):
         """Add all gradients and adc to sequence.
@@ -277,6 +293,7 @@ class MultiGradientEcho:
             )
             start_of_current_gx = sum(seq.block_durations.values())
             if echo_ < n_echoes - 1:
+                seq.add_block(pp.make_delay(self._te_delay))
                 seq.add_block(pp.scale_grad(self._gx_between, -gx_sign))
 
         return seq, time_to_echoes
