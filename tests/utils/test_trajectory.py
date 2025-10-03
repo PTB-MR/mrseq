@@ -168,8 +168,8 @@ def test_multi_gradient_echo_timing(n_echoes, readout_oversampling, n_readout, p
             current_time + mecho._adc.delay + mecho._n_readout_pre_echo * mecho._adc.dwell + mecho._adc.dwell / 2
         )
         print(dt[k0_idx[echo]], time_of_k0_adc_sample, mecho._adc.dwell)
-        assert np.isclose(dt[k0_idx[echo]], time_of_k0_adc_sample, atol=mecho._adc.dwell)
-        assert np.isclose(dt[k0_idx[echo]], time_to_echoes[echo], atol=mecho._adc.dwell)
+        assert np.isclose(dt[k0_idx[echo]], time_of_k0_adc_sample, atol=mecho._adc.dwell / 2)
+        assert np.isclose(dt[k0_idx[echo]], time_to_echoes[echo], atol=mecho._adc.dwell / 2)
 
         current_time += pp.calc_duration(mecho._gx) + pp.calc_duration(mecho._gx_between)
 

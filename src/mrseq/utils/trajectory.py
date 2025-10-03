@@ -204,13 +204,13 @@ class MultiGradientEcho:
 
         self._gx_pre = pp.make_trapezoid(
             channel='x',
-            area=-self._gx.area * self._gx_pre_ratio - self._delta_k / 2,
-            duration=self._gx_pre_duration,
+            area=-(self._gx.amplitude * self._gx.rise_time / 2 + self._delta_k * (self._n_readout_pre_echo + 0.5)),
+            duration=self._gx_pre_duration * partial_echo_factor,
             system=self._system,
         )
         self._gx_post = pp.make_trapezoid(
             channel='x',
-            area=-self._gx.area * self._gx_post_ratio + self._delta_k / 2,
+            area=-(self._gx.amplitude * self._gx.fall_time / 2 + self._delta_k * (self._n_readout_post_echo + 0.5)),
             duration=self._gx_pre_duration,
             system=self._system,
         )
@@ -293,7 +293,8 @@ class MultiGradientEcho:
             )
             start_of_current_gx = sum(seq.block_durations.values())
             if echo_ < n_echoes - 1:
-                seq.add_block(pp.make_delay(self._te_delay))
+                if self._te_delay > 0:
+                    seq.add_block(pp.make_delay(self._te_delay))
                 seq.add_block(pp.scale_grad(self._gx_between, -gx_sign))
 
         return seq, time_to_echoes
