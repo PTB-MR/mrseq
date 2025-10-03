@@ -92,6 +92,8 @@ class MultiGradientEcho:
         Number of readout points before echo.
     n_readout_with_partial_echo
         Total number of readout points with partial echo.
+    te_delay
+        Additional delay after readout gradient gx to achieve desired delta echo time.
     adc
         ADC event object.
     gx
