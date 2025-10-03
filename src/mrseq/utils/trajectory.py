@@ -86,38 +86,16 @@ class MultiGradientEcho:
     ----------
     system
         PyPulseq system limits object.
-    fov
-        Field of view in x direction (in meters).
-    n_readout
-        Number of frequency encoding steps.
-    readout_oversampling
-        Readout oversampling factor.
-    partial_echo_factor
-        Partial echo factor, commonly between 0.6 and 1.
-    gx_flat_time
-        Flat time of the readout gradient.
-    gx_pre_duration
-        Duration of readout pre-winder gradient (in seconds).
-    delta_k
-        K-space increment.
     n_readout_post_echo
         Number of readout points after echo.
     n_readout_pre_echo
         Number of readout points before echo.
     n_readout_with_partial_echo
         Total number of readout points with partial echo.
-    gx_flat_area
-        Flat area of the readout gradient.
-    gx_pre_ratio
-        Ratio for pre-winder gradient.
-    gx_post_ratio
-        Ratio for re-winder gradient.
-    gx
-        Readout gradient object.
-    n_readout_with_oversampling
-        Number of readout points with oversampling.
     adc
         ADC event object.
+    gx
+        Readout gradient object.
     gx_pre
         Pre-winder gradient object.
     gx_post
@@ -162,37 +140,27 @@ class MultiGradientEcho:
         # set system to default if not provided
         self._system = sys_defaults if system is None else system
 
-        self._fov = fov
-        self._n_readout = n_readout
-        self._readout_oversampling = readout_oversampling
-        self._partial_echo_factor = partial_echo_factor
-        self._gx_flat_time = gx_flat_time
-        self._gx_pre_duration = gx_pre_duration
-
-        self._delta_k = 1 / (self._fov * self._readout_oversampling)
-
-        self._n_readout_post_echo = int(self._n_readout * self._readout_oversampling / 2 - 1)
+        delta_k = 1 / (fov * readout_oversampling)
+        self._n_readout_post_echo = int(n_readout * readout_oversampling / 2 - 1)
         self._n_readout_post_echo += np.mod(self._n_readout_post_echo + 1, 2)  # make odd
         self._n_readout_pre_echo = int(
-            (self._n_readout * self._partial_echo_factor * self._readout_oversampling) - self._n_readout_post_echo - 1
+            (n_readout * partial_echo_factor * readout_oversampling) - self._n_readout_post_echo - 1
         )
         self._n_readout_pre_echo += np.mod(self._n_readout_pre_echo, 2)  # make even
-        self._n_readout_with_partial_echo = self._n_readout_pre_echo + 1 + self._n_readout_post_echo
 
-        self._gx_flat_area = self._n_readout_with_partial_echo * self._delta_k
-        self._gx_pre_ratio = self._n_readout_pre_echo / self._n_readout_with_partial_echo
-        self._gx_post_ratio = (self._n_readout_post_echo + 1) / self._n_readout_with_partial_echo
+        self._n_readout_with_partial_echo = self._n_readout_pre_echo + 1 + self._n_readout_post_echo
+        gx_flat_area = self._n_readout_with_partial_echo * delta_k
 
         # adc dwell time has to be on adc raster and gx flat time on gradient raster
-        self._gx_flat_time, adc_dwell_time = find_gx_flat_time_on_adc_raster(
+        self._gx_flat_time, _ = find_gx_flat_time_on_adc_raster(
             self._n_readout_with_partial_echo,
-            self._gx_flat_time / self._n_readout_with_partial_echo,
+            gx_flat_time / self._n_readout_with_partial_echo,
             self._system.grad_raster_time,
             self._system.adc_raster_time,
         )
 
         self._gx = pp.make_trapezoid(
-            channel='x', flat_area=self._gx_flat_area, flat_time=self._gx_flat_time, system=self._system
+            channel='x', flat_area=gx_flat_area, flat_time=self._gx_flat_time, system=self._system
         )
 
         self._adc = pp.make_adc(
@@ -204,20 +172,20 @@ class MultiGradientEcho:
 
         self._gx_pre = pp.make_trapezoid(
             channel='x',
-            area=-(self._gx.amplitude * self._gx.rise_time / 2 + self._delta_k * (self._n_readout_pre_echo + 0.5)),
-            duration=self._gx_pre_duration * partial_echo_factor,
+            area=-(self._gx.amplitude * self._gx.rise_time / 2 + delta_k * (self._n_readout_pre_echo + 0.5)),
+            duration=gx_pre_duration * partial_echo_factor,
             system=self._system,
         )
         self._gx_post = pp.make_trapezoid(
             channel='x',
-            area=-(self._gx.amplitude * self._gx.fall_time / 2 + self._delta_k * (self._n_readout_post_echo + 0.5)),
-            duration=self._gx_pre_duration,
+            area=-(self._gx.amplitude * self._gx.fall_time / 2 + delta_k * (self._n_readout_post_echo + 0.5)),
+            duration=gx_pre_duration,
             system=self._system,
         )
         self._gx_between = pp.make_trapezoid(
             channel='x',
             area=self._gx_pre.area - self._gx_post.area,
-            duration=self._gx_pre_duration,
+            duration=gx_pre_duration,
             system=self._system,
         )
 
