@@ -10,7 +10,7 @@ from mrseq.utils import find_gx_flat_time_on_adc_raster
 from mrseq.utils import round_to_raster
 from mrseq.utils import sys_defaults
 from mrseq.utils.create_ismrmrd_header import create_header
-from mrseq.utils.trajectory import MultiGradientEcho
+from mrseq.utils.trajectory import MultiEchoAcquisition
 from mrseq.utils.trajectory import cartesian_phase_encoding
 
 
@@ -122,7 +122,7 @@ def t2star_multi_echo_flash_kernel(
         use='excitation',
     )
 
-    multi_echo_gradient = MultiGradientEcho(
+    multi_echo_gradient = MultiEchoAcquisition(
         system=system,
         delta_te=delta_te,
         fov=fov_xy,

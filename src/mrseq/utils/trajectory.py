@@ -78,9 +78,9 @@ def cartesian_phase_encoding(
     return kpe, kpe_fully_sampled_center
 
 
-class MultiGradientEcho:
+class MultiEchoAcquisition:
     """
-    Multi-echo gradient echo readout.
+    Multi-echo gradient echo acquisition.
 
     Attributes
     ----------
@@ -118,7 +118,7 @@ class MultiGradientEcho:
         gx_pre_duration: float = 0.8e-3,
     ):
         """
-        Initialize the MultiGradientEcho class and compute all required attributes.
+        Initialize the MultiEchoAcquisition class and compute all required attributes.
 
         Parameters
         ----------
@@ -184,6 +184,7 @@ class MultiGradientEcho:
             duration=gx_pre_duration,
             system=self._system,
         )
+
         self._gx_between = pp.make_trapezoid(
             channel='x',
             area=self._gx_pre.area - self._gx_post.area,
