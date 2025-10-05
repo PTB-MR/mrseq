@@ -354,6 +354,9 @@ def main(
     if system is None:
         system = sys_defaults
 
+    if partial_echo_factor > 1 or partial_echo_factor < 0.5:
+        raise ValueError('Partial echo factor has to be within 0.5 and 1')
+
     n_recovery_cardiac_cycles = 3
 
     # define settings of rf excitation pulse
