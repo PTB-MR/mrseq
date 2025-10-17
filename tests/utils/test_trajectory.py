@@ -61,7 +61,7 @@ def test_undersampled_variable_density_spiral(
 
 @pytest.mark.parametrize('n_readout', (64, 256))
 @pytest.mark.parametrize('fov', (128e-3, 320e-3))
-@pytest.mark.parametrize('n_spirals', (16, None))
+@pytest.mark.parametrize('n_spirals', (14, None))
 @pytest.mark.parametrize('undersampling_factor', (1, 2, 3.5))
 @pytest.mark.parametrize('readout_oversampling', (1, 2, 4))
 @pytest.mark.parametrize('spiral_type', ('out', 'in-out'))
