@@ -113,7 +113,7 @@ def test_find_gx_flat_time_on_adc_raster(
 
 def test_find_gx_flat_time_on_adc_raster_no_solution():
     """Test that find_gx_flat_time_on_adc_raster raises ValueError when no solution is found."""
-    with pytest.raises(ValueError, match='No adc_dwell_time found within search range.'):
+    with pytest.raises(ValueError, match=r'No adc_dwell_time found within search range.'):
         find_gx_flat_time_on_adc_raster(
             n_readout=128,
             adc_dwell_time=1e-6,
