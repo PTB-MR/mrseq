@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from typing import Literal
 
 import ismrmrd
-import numpy as np
 
 T_traj = Literal['cartesian', 'epi', 'radial', 'spiral', 'other']
 
@@ -107,12 +106,8 @@ def create_header(
     efov = ismrmrd.xsd.fieldOfViewMm(m_to_mm(encoding_fov.x), m_to_mm(encoding_fov.y), m_to_mm(encoding_fov.z))
     rfov = ismrmrd.xsd.fieldOfViewMm(m_to_mm(recon_fov.x), m_to_mm(recon_fov.y), m_to_mm(recon_fov.z))
 
-    ematrix = ismrmrd.xsd.matrixSizeType(
-        np.astype(encoding_matrix.n_x, np.int16),
-        np.astype(encoding_matrix.n_y, np.int16),
-        np.astype(encoding_matrix.n_z, np.int16),
-    )
-    rmatrix = ismrmrd.xsd.matrixSizeType(recon_matrix.n_x, recon_matrix.n_y, recon_matrix.n_z)
+    ematrix = ismrmrd.xsd.matrixSizeType(int(encoding_matrix.n_x), int(encoding_matrix.n_y), int(encoding_matrix.n_z))
+    rmatrix = ismrmrd.xsd.matrixSizeType(int(recon_matrix.n_x), int(recon_matrix.n_y), int(recon_matrix.n_z))
 
     # set encoded and recon spaces
     escape = ismrmrd.xsd.encodingSpaceType()
@@ -122,7 +117,7 @@ def create_header(
     rspace.matrixSize = rmatrix
     rspace.fieldOfView_mm = rfov
     encoding.encodedSpace = escape
-    # encoding.reconSpace = rspace
+    encoding.reconSpace = rspace
 
     # encoding limits
     limits = ismrmrd.xsd.encodingLimitsType()
