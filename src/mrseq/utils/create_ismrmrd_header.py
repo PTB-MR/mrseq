@@ -103,23 +103,11 @@ def create_header(
     encoding.trajectory = ismrmrd.xsd.trajectoryType(traj_type)
 
     # set fov and matrix size
-    efov = ismrmrd.xsd.fieldOfViewMm()
-    efov.x = m_to_mm(encoding_fov.x)
-    efov.y = m_to_mm(encoding_fov.y)
-    efov.z = m_to_mm(encoding_fov.z)
-    rfov = ismrmrd.xsd.fieldOfViewMm()
-    rfov.x = m_to_mm(recon_fov.x)
-    rfov.y = m_to_mm(recon_fov.y)
-    rfov.z = m_to_mm(recon_fov.z)
+    efov = ismrmrd.xsd.fieldOfViewMm(m_to_mm(encoding_fov.x), m_to_mm(encoding_fov.y), m_to_mm(encoding_fov.z))
+    rfov = ismrmrd.xsd.fieldOfViewMm(m_to_mm(recon_fov.x), m_to_mm(recon_fov.y), m_to_mm(recon_fov.z))
 
-    ematrix = ismrmrd.xsd.matrixSizeType()
-    ematrix.x = encoding_matrix.n_x
-    ematrix.y = encoding_matrix.n_y
-    ematrix.z = encoding_matrix.n_z
-    rmatrix = ismrmrd.xsd.matrixSizeType()
-    rmatrix.x = recon_matrix.n_x
-    rmatrix.y = recon_matrix.n_y
-    rmatrix.z = recon_matrix.n_z
+    ematrix = ismrmrd.xsd.matrixSizeType(encoding_matrix.n_x, encoding_matrix.n_y, encoding_matrix.n_z)
+    rmatrix = ismrmrd.xsd.matrixSizeType(recon_matrix.n_x, recon_matrix.n_y, recon_matrix.n_z)
 
     # set encoded and recon spaces
     escape = ismrmrd.xsd.encodingSpaceType()
@@ -128,8 +116,8 @@ def create_header(
     rspace = ismrmrd.xsd.encodingSpaceType()
     rspace.matrixSize = rmatrix
     rspace.fieldOfView_mm = rfov
-    # encoding.encodedSpace = escape
-    # encoding.reconSpace = rspace
+    encoding.encodedSpace = escape
+    encoding.reconSpace = rspace
 
     # encoding limits
     limits = ismrmrd.xsd.encodingLimitsType()
