@@ -10,6 +10,9 @@ from pypulseq.rotate import rotate
 from mrseq.utils import find_gx_flat_time_on_adc_raster
 from mrseq.utils import round_to_raster
 from mrseq.utils import sys_defaults
+from mrseq.utils.create_ismrmrd_header import Fov
+from mrseq.utils.create_ismrmrd_header import Limits
+from mrseq.utils.create_ismrmrd_header import MatrixSize
 from mrseq.utils.create_ismrmrd_header import create_header
 
 
@@ -171,12 +174,15 @@ def radial_flash_kernel(
     # create header
     if mrd_header_file:
         hdr = create_header(
-            traj_type='radial',
-            fov=fov_xy,
-            res=fov_xy / n_readout,
-            slice_thickness=slice_thickness,
-            dt=adc.dwell,
-            n_k1=n_spokes,
+            traj_type='other',
+            encoding_fov=Fov(x=fov_xy * readout_oversampling, y=fov_xy, z=slice_thickness),
+            recon_fov=Fov(x=fov_xy, y=fov_xy, z=slice_thickness),
+            encoding_matrix=MatrixSize(n_x=n_readout_with_oversampling, n_y=n_readout_with_oversampling, n_z=1),
+            recon_matrix=MatrixSize(n_x=n_readout, n_y=n_readout, n_z=1),
+            dwell_time=adc.dwell,
+            slice_limits=Limits(min=0, max=n_slices, center=0),
+            k1_limits=Limits(min=0, max=n_spokes, center=0),
+            k2_limits=Limits(min=0, max=1, center=0),
         )
 
         # write header to file
