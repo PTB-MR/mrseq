@@ -1,9 +1,10 @@
 """Tests for radial FLASH sequence."""
 
+import numpy as np
 import pytest
 from mrseq.scripts.radial_flash import main as create_seq
 
-EXPECTED_DUR = 0.74888  # defined 2025-01-02
+EXPECTED_DUR = 0.75043  # defined 2025-10-17
 
 
 def test_default_seq_duration(system_defaults):
@@ -39,12 +40,14 @@ def test_seq_predefined_echo_time(system_defaults):
 
 def test_seq_m2d(system_defaults):
     """Test if sequence with predefined echo time."""
+    n_slices = 10
     seq = create_seq(
         system=system_defaults,
-        n_slices=4,
+        n_slices=n_slices,
         show_plots=False,
         test_report=False,
         timing_check=False,
     )
     duration = seq.duration()[0]
-    assert duration / 4 == pytest.approx(EXPECTED_DUR)
+    # we need a larger tolerance because noise samples are only acquired once and not for each slice
+    np.testing.assert_allclose(duration / n_slices, EXPECTED_DUR, rtol=0.01)

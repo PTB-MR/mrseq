@@ -184,10 +184,10 @@ def radial_flash_kernel(
         prot.write_xml_header(hdr.toXML('utf-8'))
 
     # obtain noise samples
-    # seq.add_block(pp.make_label(label='LIN', type='SET', value=0), pp.make_label(label='SLC', type='SET', value=0))
-    # seq.add_block(adc, pp.make_label(label='NOISE', type='SET', value=True))
-    # seq.add_block(pp.make_label(label='NOISE', type='SET', value=False))
-    # seq.add_block(pp.make_delay(system.rf_dead_time))
+    seq.add_block(pp.make_label(label='LIN', type='SET', value=0), pp.make_label(label='SLC', type='SET', value=0))
+    seq.add_block(adc, pp.make_label(label='NOISE', type='SET', value=True))
+    seq.add_block(pp.make_label(label='NOISE', type='SET', value=False))
+    seq.add_block(pp.make_delay(system.rf_dead_time))
 
     if mrd_header_file:
         acq = ismrmrd.Acquisition()
