@@ -121,20 +121,9 @@ def create_header(
 
     # encoding limits
     limits = ismrmrd.xsd.encodingLimitsType()
-    limits.slice = ismrmrd.xsd.limitType()
-    limits.slice.minimum = slice_limits.min
-    limits.slice.maximum = slice_limits.max
-    limits.slice.center = slice_limits.center
-
-    limits.kspace_encoding_step_1 = ismrmrd.xsd.limitType()
-    limits.kspace_encoding_step_1.minimum = k1_limits.min
-    limits.kspace_encoding_step_1.maximum = k1_limits.max
-    limits.kspace_encoding_step_1.center = k1_limits.center
-
-    limits.kspace_encoding_step_2 = ismrmrd.xsd.limitType()
-    limits.kspace_encoding_step_2.minimum = k2_limits.min
-    limits.kspace_encoding_step_2.maximum = k2_limits.max
-    limits.kspace_encoding_step_2.center = k2_limits.center
+    limits.slice = ismrmrd.xsd.limitType(slice_limits.min, slice_limits.max, slice_limits.center)
+    limits.kspace_encoding_step_1 = ismrmrd.xsd.limitType(k1_limits.min, k1_limits.max, k1_limits.center)
+    limits.kspace_encoding_step_2 = ismrmrd.xsd.limitType(k2_limits.min, k2_limits.max, k2_limits.center)
     encoding.encodingLimits = limits
 
     # append encoding
