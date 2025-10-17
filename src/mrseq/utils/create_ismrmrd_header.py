@@ -147,7 +147,7 @@ def create_header(
     limits.kspace_encoding_step_2.minimum = k2_limits.min
     limits.kspace_encoding_step_2.maximum = k2_limits.max
     limits.kspace_encoding_step_2.center = k2_limits.center
-    # encoding.encodingLimits = limits
+    encoding.encodingLimits = limits
 
     # append encoding
     hdr.encoding.append(encoding)
