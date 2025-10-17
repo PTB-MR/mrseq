@@ -117,7 +117,7 @@ def create_header(
     rspace.matrixSize = rmatrix
     rspace.fieldOfView_mm = rfov
     encoding.encodedSpace = escape
-    encoding.reconSpace = rspace
+    # encoding.reconSpace = rspace
 
     # encoding limits
     limits = ismrmrd.xsd.encodingLimitsType()
