@@ -18,11 +18,10 @@ include-package-data = true
 
 [project]
 name = "mrseq"
-version = "0.0.1"
 description = "(Py)Pulseq-based MRI sequences."
 readme = "README.md"
-requires-python = ">=3.10,<3.14"
-license = { file = "LICENSE" }
+requires-python = ">=3.10,<3.15"
+dynamic = ["version"]
 keywords = ["MRI, Pulseq, PyPulseq, pulse sequence"]
 authors = [
     { name = "Patrick Schuenke", email = "patrick.schuenke@ptb.de" },
@@ -35,13 +34,14 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Programming Language :: Python :: 3 :: Only",
 ]
 
 dependencies = ["numpy>=1.23,<2.0", "matplotlib<4.0", "pypulseq>=1.4.2"]
 
 [project.optional-dependencies]
-test = [
+dev = [
     "coverage",
     "codecov",
     "pre-commit",
@@ -49,8 +49,6 @@ test = [
     "pytest-cov",
     "pytest-xdist",
 ]
-sigpy = ["sigpy>=0.1.26"]
-
 
 [project.urls]
 "repository" = "https://github.com/PTB-MR/mrseq"

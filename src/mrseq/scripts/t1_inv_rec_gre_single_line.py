@@ -155,7 +155,7 @@ def t1_inv_rec_gre_single_line_kernel(
 
             # calculate and add inversion time (TI) delay.
             # TI is defined as time from middle of inversion pulse to middle of excitation pulse.
-            ti_delay = ti - time_since_inversion - system.rf_dead_time - rf_duration / 2
+            ti_delay = ti - time_since_inversion - rf.delay - rf_duration / 2
             ti_delay = round_to_raster(ti_delay, system.block_duration_raster)
             if ti_delay < 0:
                 raise ValueError(
