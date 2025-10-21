@@ -164,10 +164,10 @@ def t1_molli_bssfp_kernel(
     print(f'Acquisition window per cardiac cycle = {current_tr * len(pe_steps) * 1000:.2f} ms')
 
     # obtain noise samples
-    # seq.add_block(pp.make_label(label='LIN', type='SET', value=0), pp.make_label(label='SLC', type='SET', value=0))
-    # seq.add_block(adc, pp.make_label(label='NOISE', type='SET', value=True))
-    # seq.add_block(pp.make_label(label='NOISE', type='SET', value=False))
-    # seq.add_block(pp.make_delay(system.rf_dead_time))
+    seq.add_block(pp.make_label(label='LIN', type='SET', value=0), pp.make_label(label='SLC', type='SET', value=0))
+    seq.add_block(adc, pp.make_label(label='NOISE', type='SET', value=True))
+    seq.add_block(pp.make_label(label='NOISE', type='SET', value=False))
+    seq.add_block(pp.make_delay(system.rf_dead_time))
 
     # Create inversion pulse
     t1_inv_prep, block_duration, time_since_inversion = add_t1_inv_prep(system=system)
