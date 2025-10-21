@@ -178,10 +178,10 @@ def t2_t2prep_flash_kernel(
     rf_inc = 0
 
     # obtain noise samples
-    # seq.add_block(pp.make_label(label='LIN', type='SET', value=0), pp.make_label(label='SLC', type='SET', value=0))
-    # seq.add_block(adc, pp.make_label(label='NOISE', type='SET', value=True))
-    # seq.add_block(pp.make_label(label='NOISE', type='SET', value=False))
-    # seq.add_block(pp.make_delay(system.rf_dead_time))
+    seq.add_block(pp.make_label(label='LIN', type='SET', value=0), pp.make_label(label='SLC', type='SET', value=0))
+    seq.add_block(adc, pp.make_label(label='NOISE', type='SET', value=True))
+    seq.add_block(pp.make_label(label='NOISE', type='SET', value=False))
+    seq.add_block(pp.make_delay(system.rf_dead_time))
 
     for t2_idx, t2_prep_echo_time in enumerate(t2_prep_echo_times):
         if t2_prep_echo_time > 0:
@@ -383,6 +383,7 @@ def main(
     seq.set_definition('SliceThickness', slice_thickness)
     seq.set_definition('TE', te or min_te)
     seq.set_definition('TR', tr or min_tr)
+    seq.set_definition('ReadoutOversamplingFactor', readout_oversampling)
 
     # save seq-file to disk
     print(f"\nSaving sequence file '{filename}.seq' into folder '{output_path}'.")
