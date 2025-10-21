@@ -47,6 +47,9 @@ dev = [
     "pytest",
     "pytest-cov",
     "pytest-xdist",
+    "MRzeroCore", 
+    "mrpro",
+    "jupyter-book",
 ]
 
 [project.urls]
