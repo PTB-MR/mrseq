@@ -47,7 +47,7 @@ dev = [
     "pytest",
     "pytest-cov",
     "pytest-xdist",
-    "MRzeroCore", 
+    "MRzeroCore@git+https://github.com/ckolbPTB/MRzero-Core.git@extend_mrd",
     "mrpro",
     "jupyter-book",
 ]

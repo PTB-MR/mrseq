@@ -2,3 +2,24 @@ title: MR Sequences
 author: Christoph Kolbitsch, Patrich Schuenke
 execute:
   execute_notebooks: force
+
+launch_buttons:
+  colab_url: "https://colab.research.google.com"
+
+repository:
+  url: https://github.com/PTB-MR/mrseq/
+  path_to_book: examples
+  branch: main 
+
+html:
+  use_issues_button: true
+  use_repository_button: true
+
+sphinx:
+  extra_extensions:
+    - 'sphinx.ext.autodoc'
+    - 'sphinx.ext.napoleon'
+    - 'sphinx.ext.viewcode'
+  config:
+    add_module_names: False
+    html_theme: pydata_sphinx_theme

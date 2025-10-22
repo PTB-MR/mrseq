@@ -1,6 +1,5 @@
 format: jb-book
 root: intro
-parts:
-  - caption: T1 mapping
-    chapters:
-    - file: t1_inv_rec_gre_single_line
+chapters:
+- file: t1_inv_rec_gre_single_line
+- file: t1_inv_rec_se_single_line
