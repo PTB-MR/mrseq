@@ -375,7 +375,7 @@ def main(
     seq.set_definition('SliceThickness', slice_thickness)
     seq.set_definition('TE', te or min_te)
     seq.set_definition('TR', tr)
-    seq.set_definition('TSL', spin_lock_times)
+    seq.set_definition('TSL', spin_lock_times.tolist())
 
     # save seq-file to disk
     output_path = Path.cwd() / 'output'
