@@ -21,7 +21,7 @@ jobs:
     steps:
       # use the results of python 3.12, consider this as target platform
       - name: Download PyTest report artifact for Python 3.12
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: pytest-report-3.12
           run-id: ${{ github.event.workflow_run.id }}
@@ -82,7 +82,7 @@ jobs:
       actions: read # Required for downloading artifacts
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
