@@ -6,43 +6,60 @@ on:
       - main
   pull_request:
 
-# This job installs dependencies, builds the book, and pushes it to `gh-pages`
 jobs:
-  examples-to-pages:
+  build:
     runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Install dependencies
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install mrpro and dependencies
+        run: |
+          pip install --index-url=https://download.pytorch.org/whl/cpu \
+                      --extra-index-url https://pypi.org/simple/ \
+                      --upgrade --upgrade-strategy eager -e .[dev]
+
+      # Build the book
+      - name: Build the book
+        run: jupyter-book build examples
+
+      # Upload the book's HTML as an artifact (useful for PR previews)
+      - name: Upload built HTML
+        uses: actions/upload-artifact@v4
+        with:
+          name: built-book
+          path: examples/_build/html
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       pages: write
       id-token: write
+
     steps:
-    - uses: actions/checkout@v4
+      - name: Download built HTML
+        uses: actions/download-artifact@v4
+        with:
+          name: built-book
+          path: examples/_build/html
 
-    # Install dependencies
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
-        cache: pip 
+      # Upload to GitHub Pages
+      - name: Upload artifact for Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: examples/_build/html
 
-    - name: Install mrpro and dependencies
-      run: pip install --index-url=https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple/ --upgrade --upgrade-strategy "eager" -e .[dev]
+      # Deploy the book's HTML to GitHub Pages
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
 
-    # Build the book
-    - name: Build the book
-      run: |
-        jupyter-book build examples
-
-    # Upload the book's HTML as an artifact
-    - name: Upload artifact
-      uses: actions/upload-pages-artifact@v3
-      with:
-        path: "examples/_build/html"
-
-    # Deploy the book's HTML to GitHub Pages
-    - name: Deploy to GitHub Pages
-      if: >-
-        ${{ github.event.workflow_run.event == 'push' &&
-          github.event.workflow_run.head_branch == 'main' &&
-          github.event.workflow_run.conclusion != 'cancelled' &&
-          github.event.workflow_run.conclusion != 'skipped' }} 
-      id: deployment
-      uses: actions/deploy-pages@v4
