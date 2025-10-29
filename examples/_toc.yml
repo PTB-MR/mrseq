@@ -5,3 +5,5 @@ chapters:
   sections:
   - file: t1_inv_rec_gre_single_line
   - file: t1_inv_rec_se_single_line
+  - file: t2_multi_echo_se_single_line
+  - file: t1rho_se_single_line
