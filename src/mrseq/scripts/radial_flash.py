@@ -97,6 +97,12 @@ def radial_flash_kernel(
         Shortest possible repetition time.
 
     """
+    if readout_oversampling < 1:
+        raise ValueError('Readout oversampling factor must be >= 1.')
+
+    if n_dummy_excitations < 0:
+        raise ValueError('Number of dummy excitations must be >= 0.')
+
     # create PyPulseq Sequence object and set system limits
     seq = pp.Sequence(system=system)
 
