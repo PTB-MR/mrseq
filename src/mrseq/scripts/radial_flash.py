@@ -10,6 +10,7 @@ from pypulseq.rotate import rotate
 from mrseq.utils import find_gx_flat_time_on_adc_raster
 from mrseq.utils import round_to_raster
 from mrseq.utils import sys_defaults
+from mrseq.utils.constants import GOLDEN_ANGLE_HALF_CIRCLE
 from mrseq.utils.create_ismrmrd_header import Fov
 from mrseq.utils.create_ismrmrd_header import Limits
 from mrseq.utils.create_ismrmrd_header import MatrixSize
@@ -318,7 +319,7 @@ def main(
     rf_bwt = 4  # bandwidth-time product of rf excitation pulse [Hz*s]
     rf_apodization = 0.5  # apodization factor of rf excitation pulse
     readout_oversampling = 2  # readout oversampling factor, commonly 2. This reduces aliasing artifacts.
-    spoke_angle = np.pi / 180 * (180 * 0.618034)
+    spoke_angle = GOLDEN_ANGLE_HALF_CIRCLE
 
     # define ADC and gradient timing
     n_readout_with_oversampling = int(n_readout * readout_oversampling)
