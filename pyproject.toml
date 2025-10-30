@@ -48,6 +48,10 @@ dev = [
     "pytest",
     "pytest-cov",
     "pytest-xdist",
+    "MRzeroCore@git+https://github.com/ckolbPTB/MRzero-Core.git@extend_mrd",
+    "mrpro",
+    "cmap",
+    "jupyter-book",
 ]
 
 [project.urls]

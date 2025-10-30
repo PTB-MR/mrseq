@@ -22,7 +22,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Install 'MRseq' Package and Dependencies
-        run: pip install --upgrade --upgrade-strategy eager .[dev]
+        run: pip install --index-url=https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple/ --upgrade --upgrade-strategy eager .[dev]
 
       - name: Install PyTest GitHub Annotation Plugin
         run: pip install pytest-github-actions-annotate-failures
