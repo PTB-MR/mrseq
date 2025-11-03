@@ -11,7 +11,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v5
 
       # Install dependencies
       - name: Set up Python 3.12
@@ -26,9 +27,14 @@ jobs:
                       --extra-index-url https://pypi.org/simple/ \
                       --upgrade --upgrade-strategy eager -e .[dev]
 
+      - name: location
+        run: |
+          ls
+          pwd
+          
       # Build the book
       - name: Build the book
-        run: jupyter-book build examples
+        run: jupyter-book build ./examples
 
       # Upload the book's HTML as an artifact (useful for PR previews)
       - name: Upload built HTML
