@@ -51,7 +51,7 @@ dev = [
     "MRzeroCore@git+https://github.com/ckolbPTB/MRzero-Core.git@extend_mrd",
     "mrpro",
     "cmap",
-    "jupyter-book",
+    "jupyter-book<2.0",
 ]
 
 [project.urls]

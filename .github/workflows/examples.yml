@@ -27,14 +27,9 @@ jobs:
                       --extra-index-url https://pypi.org/simple/ \
                       --upgrade --upgrade-strategy eager -e .[dev]
 
-      - name: location
-        run: |
-          ls
-          pwd
-          
       # Build the book
       - name: Build the book
-        run: jupyter-book build -vv ./examples
+        run: jupyter-book build examples
 
       # Upload the book's HTML as an artifact (useful for PR previews)
       - name: Upload built HTML
