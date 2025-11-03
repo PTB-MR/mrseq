@@ -34,7 +34,7 @@ jobs:
           
       # Build the book
       - name: Build the book
-        run: jupyter-book build ./examples
+        run: jupyter-book build -vv ./examples
 
       # Upload the book's HTML as an artifact (useful for PR previews)
       - name: Upload built HTML
