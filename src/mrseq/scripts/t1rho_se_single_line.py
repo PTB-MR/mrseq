@@ -156,7 +156,7 @@ def t1rho_se_single_line_kernel(
         + gx.delay
         + gx.rise_time
         + (k0_center_id + 0.5) * adc.dwell  # time from beginning of ADC to time point of k-space center sample
-    )
+    ).item()
 
     if te is None:
         delay_gz90_reph_and_gz_spoil = delay_gz_spoil_and_gx_pre = 0
@@ -202,16 +202,17 @@ def t1rho_se_single_line_kernel(
             _start_time_tr_block = sum(seq.block_durations.values())
 
             # add T1rho preparation block
-            seq, _ = add_t1rho_prep(
-                seq=seq,
-                system=system,
-                duration_90=rf_spin_lock_duration,
-                spin_lock_time=tsl,
-                spin_lock_amplitude=spin_lock_amplitude,
-                add_spoiler=add_spin_lock_spoiler,
-                spoiler_ramp_time=spin_lock_spoiler_ramp_time,
-                spoiler_flat_time=spin_lock_spoiler_flat_time,
-            )
+            if tsl > 0:
+                seq, _ = add_t1rho_prep(
+                    seq=seq,
+                    system=system,
+                    duration_90=rf_spin_lock_duration,
+                    spin_lock_time=tsl,
+                    spin_lock_amplitude=spin_lock_amplitude,
+                    add_spoiler=add_spin_lock_spoiler,
+                    spoiler_ramp_time=spin_lock_spoiler_ramp_time,
+                    spoiler_flat_time=spin_lock_spoiler_flat_time,
+                )
 
             # add 90° excitation pulse followed by rewinder gradient
             seq.add_block(rf90, gz90)
@@ -386,7 +387,7 @@ def main(
     if show_plots:
         seq.plot(time_range=(0, time_to_first_tr_block))
 
-    return seq
+    return seq, output_path / filename
 
 
 if __name__ == '__main__':

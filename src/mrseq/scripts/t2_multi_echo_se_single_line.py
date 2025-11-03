@@ -334,7 +334,7 @@ def main(
     if show_plots:
         seq.plot(time_range=(0, min_tr_first_echo_block))
 
-    return seq
+    return seq, output_path / filename
 
 
 if __name__ == '__main__':

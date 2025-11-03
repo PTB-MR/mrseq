@@ -2,6 +2,7 @@ title: MR Sequences
 author: Christoph Kolbitsch, Patrich Schuenke
 execute:
   execute_notebooks: force
+  raise_on_error: true
 
 launch_buttons:
   colab_url: "https://colab.research.google.com"
