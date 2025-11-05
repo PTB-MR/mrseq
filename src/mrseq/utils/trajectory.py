@@ -14,11 +14,13 @@ def undersampled_variable_density_spiral(system: pp.Opts, n_readout: int, fov: f
     The distribution of the k-space points of a spiral trajectory are restricted by the maximum gradient amplitude and
     slew rate. This makes an analytic solution for a given undersampling factor challenging. Here we use an iterative
     approach in order to achieve a variable density spiral with a certain number of readout samplings and undersampling
-    factor while keeping the k-space center fully sampled.
+    factor.
 
-    The reduction of the field-of-view towards the k-space periphery is varied until a k-space trajectory is found
-    which achieves the number of readout samplings as close to `n_readout` and an undersampling factor as close to
-    `undersampling_factor` as possible.
+    During the iterative search the undersampling for the edge of k-space is increased. If this is not enough, then we
+    also start to increase the undersampling in the k-space center. The field-of-view varies linearly bewtween the
+    k-space center and k-space edge.
+
+    If the undersampling factor is to high, it might not be possible to find a suitable solution.
 
     Parameters
     ----------
@@ -41,27 +43,40 @@ def undersampled_variable_density_spiral(system: pp.Opts, n_readout: int, fov: f
         - Radius values (r)
         - Angular positions (theta)
         - Number of spiral arms
-        - Coefficient to reduce the field-of-view in the k-space periphery
+        - Scaling of the field-of-view in the k-space center
+        - Scaling of the field-of-view in the k-space edge
 
     """
     # calculate single spiral trajectory
     n_k0 = np.inf
-    fov_scaling = 0.0
-    n_spirals = int(n_readout / undersampling_factor)
+    fov_scaling_center = 1.0
+    fov_scaling_edge = 1.0
+    n_spirals = int(np.round(n_readout / undersampling_factor))
     while n_k0 > n_readout:
-        fov_coefficients = [fov, -fov * fov_scaling]
+        fov_coefficients = [fov * fov_scaling_center, -fov * (1 - fov_scaling_edge)]
 
-        traj, grad, s, timing, r, theta = variable_density_spiral_trajectory(
-            system=system,
-            sampling_period=system.grad_raster_time,
-            n_interleaves=n_spirals,
-            fov_coefficients=fov_coefficients,
-            max_kspace_radius=0.5 / fov * n_readout,
-        )
-        n_k0 = len(grad)
-        fov_scaling += 0.01
+        try:
+            traj, grad, s, timing, r, theta = variable_density_spiral_trajectory(
+                system=system,
+                sampling_period=system.grad_raster_time,
+                n_interleaves=n_spirals,
+                fov_coefficients=fov_coefficients,
+                max_kspace_radius=0.5 / fov * n_readout,
+            )
+            n_k0 = len(grad)
+            fov_scaling_edge *= 0.95
+        except ValueError:
+            # It is not possible to achieve the desired undersampling factor with the given system limits while keeping
+            # the full field-of-view in the k-space center. Reduce the field-of-view and try again.
+            # print(e)
+            n_k0 = np.inf
+            fov_scaling_center *= 0.95
+            fov_scaling_edge = fov_scaling_center
 
-    return traj, grad, s, timing, r, theta, n_spirals, fov_scaling - 0.01
+        if fov_scaling_center < 0.1:
+            raise ValueError('Cannot find a suitable trajectory.')
+
+    return traj, grad, s, timing, r, theta, n_spirals, fov_coefficients[0] / fov, fov_coefficients[1] / fov + 1
 
 
 def spiral_acquisition(
@@ -109,13 +124,14 @@ def spiral_acquisition(
         Time to echo from beginning of gradients (in seconds).
     """
     # calculate single spiral trajectory
-    traj, grad, _s, _timing, _r, _theta, n_spirals_undersampling, _fov_coefficient = (
+    traj, grad, _s, _timing, _r, _theta, n_spirals_undersampling, fov_scaling_center, fov_scaling_edge = (
         undersampled_variable_density_spiral(system, n_readout, fov, undersampling_factor)
     )
     n_spirals = n_spirals_undersampling if n_spirals is None else n_spirals
     print(
         f'Target undersampling: {undersampling_factor} - ',
-        f'achieved undersampling: {n_readout**2 / (len(traj) * n_spirals_undersampling)}',
+        f'achieved undersampling: {n_readout**2 / (len(traj) * n_spirals_undersampling):.2f}',
+        f'FOV: {fov * fov_scaling_center:.3f} (k-sapce center) - {fov * fov_scaling_edge:.3f} (k-space edge)',
     )
 
     delta_angle = 2 * np.pi / n_spirals

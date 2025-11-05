@@ -26,8 +26,12 @@ def quadratic_formula_solver(a: float, b: float, c: float) -> tuple[float, float
         The two roots (solutions) of the quadratic equation.
     """
     discriminant = b**2 - 4 * a * c
-    root1 = (-b + np.sqrt(discriminant)) / (2 * a)
-    root2 = (-b - np.sqrt(discriminant)) / (2 * a)
+    if discriminant < 0:  # we only take the real part
+        root1 = -b / (2 * a)
+        root2 = -b / (2 * a)
+    else:
+        root1 = (-b + np.sqrt(discriminant)) / (2 * a)
+        root2 = (-b - np.sqrt(discriminant)) / (2 * a)
 
     return root1, root2
 
@@ -128,10 +132,10 @@ def calculate_angular_and_radial_acceleration(
 
         # Print warning if slew rate violation detected
         if slew_rate_ratio > 1.0 + 1e-6:
-            print(
+            raise ValueError(
                 f'Slew rate violation detected for radius = {radius}.\n'
                 f'Current slew rate = {round(np.abs(slew_rate_vector))} '
-                f'Maximum slew rate = {round(max_slew)} (ratio = {round(slew_rate_ratio)})\n'
+                f'Maximum slew rate = {round(max_slew)} (ratio = {round(slew_rate_ratio, 2)})\n'
             )
 
     # Calculate angular acceleration (q2)

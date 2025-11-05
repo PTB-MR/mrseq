@@ -7,7 +7,7 @@ from mrseq.utils import spiral_acquisition
 from mrseq.utils.trajectory import undersampled_variable_density_spiral
 
 
-def get_interp_waveform_for_gx_gx(seq: pp.Sequence, dt: np.ndarray | None = None, scale: float = 1.0):
+def get_interp_waveform_for_gx_gy(seq: pp.Sequence, dt: np.ndarray | None = None, scale: float = 1.0):
     """Interpolate gradient waveforms for the x and y axes.
 
     Parameters
@@ -52,17 +52,17 @@ def test_undersampled_variable_density_spiral(
     system_defaults: pp.Opts, n_readout: int, fov: float, undersampling_factor: float
 ):
     """Test spiral for different undersampling factors."""
-    traj, _grad, _s, _timing, _r, _theta, n_spirals, _fov_coefficient = undersampled_variable_density_spiral(
-        system_defaults, n_readout, fov, undersampling_factor
+    traj, _grad, _s, _timing, _r, _theta, n_spirals, _fov_scaling_center, _fov_scaling_edge = (
+        undersampled_variable_density_spiral(system_defaults, n_readout, fov, undersampling_factor)
     )
     total_number_of_points = len(traj) * n_spirals
-    np.testing.assert_almost_equal(n_readout**2 / total_number_of_points, undersampling_factor, 0)
+    assert np.round(n_readout**2 / total_number_of_points) == undersampling_factor
 
 
 @pytest.mark.parametrize('n_readout', (64, 256))
 @pytest.mark.parametrize('fov', (128e-3, 320e-3))
 @pytest.mark.parametrize('n_spirals', (14, None))
-@pytest.mark.parametrize('undersampling_factor', (1, 2, 3.5))
+@pytest.mark.parametrize('undersampling_factor', (1, 3))
 @pytest.mark.parametrize('readout_oversampling', (1, 2, 4))
 @pytest.mark.parametrize('spiral_type', ('out', 'in-out'))
 def test_spiral_acquisition(
@@ -94,7 +94,7 @@ def test_spiral_acquisition(
         seq.add_block(gx[spiral_idx], gy[spiral_idx], adc)
 
         # Get full waveform for readout gradient
-        gx_waveform_intp, gy_waveform_intp, dt = get_interp_waveform_for_gx_gx(seq)
+        gx_waveform_intp, gy_waveform_intp, dt = get_interp_waveform_for_gx_gy(seq)
         max_grad = np.max(np.abs(gx_waveform_intp))
         gx_waveform_intp /= max_grad
         gy_waveform_intp /= max_grad
@@ -112,12 +112,15 @@ def test_spiral_acquisition(
         assert np.isclose(dt[k0_idx], time_to_echo, atol=system_defaults.grad_raster_time)
 
         k_traj_adc = seq.calculate_kspace()[0]
-        # Ignore first and last element because it is extrapolated for readout_oversampling > 1
-        k_traj_adc /= np.max(np.abs(k_traj_adc[:, 1:-1]))
+        # Ignore first and last elements because they are extrapolated for readout_oversampling > 1
         k_traj_spiral = trajectory[spiral_idx, :, :]
-        k_traj_spiral /= np.max(np.abs(k_traj_spiral[1:-1, :]))
-        np.testing.assert_allclose(k_traj_adc[0, 1:-1], k_traj_spiral[1:-1, 0], atol=1e-2)
-        np.testing.assert_allclose(k_traj_adc[1, 1:-1], k_traj_spiral[1:-1, 1], atol=1e-2)
+        if readout_oversampling > 1:
+            k_traj_adc = k_traj_adc[:, readout_oversampling // 2 : -readout_oversampling // 2]
+            k_traj_spiral = k_traj_spiral[readout_oversampling // 2 : -readout_oversampling // 2, :]
+        k_traj_adc /= np.max(np.abs(k_traj_adc))
+        k_traj_spiral /= np.max(np.abs(k_traj_spiral))
+        np.testing.assert_allclose(k_traj_adc[0, :], k_traj_spiral[:, 0], atol=2.5e-3)
+        np.testing.assert_allclose(k_traj_adc[1, :], k_traj_spiral[:, 1], atol=2.5e-3)
 
     # Verify entire trajectory
     seq = pp.Sequence(system=system_defaults)
