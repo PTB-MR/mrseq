@@ -1,7 +1,109 @@
 """Functions to generate a variable density spiral trajectory.
 
-The code is originally based on MATLAB code of Brian Hargreaves:
+Program translated from the matlab program of Brian Hargreaves:
 http://mrsrl.stanford.edu/~brian/vdspiral/
+
+Description given by Brian Hargreaves
+
+    function [k,g,s,time,r,theta] = vds(smax,gmax,T,N,Fcoeff,rmax)
+
+    VARIABLE DENSITY SPIRAL GENERATION:
+    ----------------------------------
+
+    Function generates variable density spiral which traces
+    out the trajectory
+
+            k(t) = r(t) exp(i*q(t)), 		[1]
+
+    Where q is the same as theta...
+        r and q are chosen to satisfy:
+
+        1) Maximum gradient amplitudes and slew rates.
+        2) Maximum gradient due to FOV, where FOV can
+           vary with k-space radius r/rmax, as
+
+            FOV(r) = Sum    Fcoeff(k)*(r/rmax)^(k-1)   [2]
+
+
+    INPUTS:
+    -------
+    smax = maximum slew rate in Hz/m/s
+    gmax = maximum gradient in Hz/m (limited by Gmax or FOV)
+    T = sampling period (s) for gradient AND acquisition.
+    N = number of interleaves.
+    Fcoeff = FOV coefficients with respect to r - see above.
+    rmax= value of k-space radius at which to stop (m^-1).
+        rmax = 1/(2*resolution)
+
+
+    OUTPUTS:
+    --------
+    k = k-space trajectory (kx+iky) in m-1.
+    g = gradient waveform (Gx+iGy) in Hz/m.
+    s = derivative of g (Sx+iSy) in Hz/m/s.
+    time = time points corresponding to above (s).
+    r = k-space radius vs time (used to design spiral)
+    theta = atan2(ky,kx) = k-space angle vs time.
+
+Methods
+-------
+    Let r1 and r2 be the first derivatives of r in [1].
+    Let q1 and q2 be the first derivatives of theta in [1].
+    Also, r0 = r, and q0 = theta - sometimes both are used.
+    F = F(r) defined by Fcoeff.
+
+    Differentiating [1], we can get G = a(r0,r1,q0,q1,F)
+    and differentiating again, we get S = b(r0,r1,r2,q0,q1,q2,F)
+
+    (functions a() and b() are reasonably easy to obtain.)
+
+    FOV limits put a constraint between r and q:
+
+        dr/dq = N/(2*pi*F)				[3]
+
+    We can use [3] and the chain rule to give
+
+        q1 = 2*pi*F/N * r1				[4]
+
+    and
+
+        q2 = 2*pi/N*dF/dr*r1^2 + 2*pi*F/N*r2		[5]
+
+
+
+    Now using [4] and [5], we can substitute for q1 and q2
+    in functions a() and b(), giving
+
+        G = c(r0,r1,F)
+    and 	S = d(r0,r1,r2,F,dF/dr)
+
+    Using the fact that the spiral should be either limited
+    by amplitude (Gradient or FOV limit) or slew rate, we can
+    solve
+        |c(r0,r1,F)| = |Gmax|  				[6]
+
+    analytically for r1, or
+
+        |d(r0,r1,r2,F,dF/dr)| = |Smax|	 		[7]
+
+    analytically for r2.
+
+    [7] is a quadratic equation in r2.  The smaller of the
+    roots is taken, and the np.real part of the root is used to
+    avoid possible numeric errors - the roots should be np.real
+    always.
+
+    The choice of whether or not to use [6] or [7], and the
+    solving for r2 or r1 is done by findq2r2 - in this .m file.
+
+    Once the second derivative of theta(q) or r is obtained,
+    it can be integrated to give q1 and r1, and then integrated
+    again to give q and r.  The gradient waveforms follow from
+    q and r.
+
+    Brian Hargreaves -- Sept 2000.
+
+    See Brian's journal, Vol 6, P.24.
 """
 
 import numpy as np
