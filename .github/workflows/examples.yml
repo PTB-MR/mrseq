@@ -16,7 +16,7 @@ jobs:
 
       # Install dependencies
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
           cache: pip
@@ -33,7 +33,7 @@ jobs:
 
       # Upload the book's HTML as an artifact (useful for PR previews)
       - name: Upload built HTML
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: built-book
           path: examples/_build/html
@@ -48,14 +48,14 @@ jobs:
 
     steps:
       - name: Download built HTML
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: built-book
           path: examples/_build/html
 
       # Upload to GitHub Pages
       - name: Upload artifact for Pages
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: examples/_build/html
 
