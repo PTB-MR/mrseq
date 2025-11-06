@@ -16,6 +16,20 @@ We are looking forward to your contributions via Pull-Requests.
 
 ### Installation for developers
 
+#### Prerequisites for Windows
+
+Before installing MRseq with development dependencies on Windows, you need:
+
+1. **Visual Studio Build Tools**: The MRzeroCore dependency requires Rust compilation with Microsoft Visual C++ linker
+   - Download "Build Tools for Visual Studio 2022" from https://visualstudio.microsoft.com/downloads/
+   - During installation, select the "C++ build tools" workload
+   - Ensure "Windows 10/11 SDK" is included
+   - This is required for compiling native Rust extensions
+
+2. **Rust toolchain** (automatically installed by MRzeroCore if not present)
+
+#### Installation steps
+
 1. Clone the MRseq repository
 2. Create/select a python environment
 3. Install "MRseq" in editable mode including test dependencies: ``` pip install -e ".[dev]" ```
