@@ -9,6 +9,7 @@ MRseq is a collection of several useful functions, kernels and scripts for creat
 
 - **Source code:** <https://github.com/PTB-MR/mrseq>
 - **Bug reports:** <https://github.com/PTB-MR/mrseq/issues>
+- **Documentation:** <https://ptb-mr.github.io/mrseq/intro.html>
 
 ## Contributing
 
