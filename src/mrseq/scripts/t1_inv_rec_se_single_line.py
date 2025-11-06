@@ -156,7 +156,7 @@ def t1_inv_rec_se_single_line_kernel(
         + gx.delay
         + gx.rise_time
         + (k0_center_id + 0.5) * adc.dwell  # time from beginning of ADC to time point of k-space center sample
-    )
+    ).item()
 
     if te is None:
         delay_gz90_reph_and_gz_spoil = delay_gz_spoil_and_gx_pre = 0
@@ -384,7 +384,7 @@ def main(
     seq.set_definition('SliceThickness', slice_thickness)
     seq.set_definition('TE', te or min_te)
     seq.set_definition('TR', tr)
-    seq.set_definition('TI', inversion_times)
+    seq.set_definition('TI', inversion_times.tolist())
 
     # save seq-file to disk
     output_path = Path.cwd() / 'output'
@@ -395,7 +395,7 @@ def main(
     if show_plots:
         seq.plot(time_range=(0, time_to_first_tr_block))
 
-    return seq
+    return seq, output_path / filename
 
 
 if __name__ == '__main__':

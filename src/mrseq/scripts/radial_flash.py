@@ -11,10 +11,10 @@ from mrseq.utils import find_gx_flat_time_on_adc_raster
 from mrseq.utils import round_to_raster
 from mrseq.utils import sys_defaults
 from mrseq.utils.constants import GOLDEN_ANGLE_HALF_CIRCLE
-from mrseq.utils.create_ismrmrd_header import Fov
-from mrseq.utils.create_ismrmrd_header import Limits
-from mrseq.utils.create_ismrmrd_header import MatrixSize
-from mrseq.utils.create_ismrmrd_header import create_header
+from mrseq.utils.ismrmrd import Fov
+from mrseq.utils.ismrmrd import Limits
+from mrseq.utils.ismrmrd import MatrixSize
+from mrseq.utils.ismrmrd import create_header
 
 
 def radial_flash_kernel(
@@ -120,9 +120,11 @@ def radial_flash_kernel(
     )
 
     # create readout gradient and ADC
-    delta_k = 1 / fov_xy
-    gx = pp.make_trapezoid(channel='x', flat_area=n_readout * delta_k, flat_time=gx_flat_time, system=system)
+    delta_k = 1 / (fov_xy * readout_oversampling)
     n_readout_with_oversampling = int(n_readout * readout_oversampling)
+    gx = pp.make_trapezoid(
+        channel='x', flat_area=n_readout_with_oversampling * delta_k, flat_time=gx_flat_time, system=system
+    )
     n_readout_with_oversampling = n_readout_with_oversampling + np.mod(n_readout_with_oversampling, 2)  # make even
     adc = pp.make_adc(num_samples=n_readout_with_oversampling, duration=gx.flat_time, delay=gx.rise_time, system=system)
 
@@ -149,7 +151,7 @@ def radial_flash_kernel(
         + gx.delay  # potential delay of readout gradient
         + gx.rise_time  # rise time of readout gradient
         + (k0_center_id + 0.5) * adc.dwell  # time from beginning of ADC to time point of k-space center sample
-    )
+    ).item()
 
     # calculate echo time delay (te_delay)
     te_delay = 0 if te is None else round_to_raster(te - min_te, system.block_duration_raster)
@@ -277,12 +279,14 @@ def main(
     system: pp.Opts | None = None,
     te: float | None = None,
     tr: float | None = None,
+    rf_flip_angle: float = 12,
     fov_xy: float = 128e-3,
     n_readout: int = 128,
     n_spokes: int = 128,
     slice_thickness: float = 8e-3,
     n_slices: int = 1,
     receiver_bandwidth_per_pixel: float = 800,  # Hz/pixel
+    n_dummy_excitations: int = 20,
     show_plots: bool = True,
     test_report: bool = True,
     timing_check: bool = True,
@@ -297,6 +301,8 @@ def main(
         Desired echo time (TE) (in seconds). Minimum echo time is used if set to None.
     tr
         Desired repetition time (TR) (in seconds). Minimum repetition time is used if set to None.
+    rf_flip_angle
+        Flip angle of rf excitation pulse (in degrees)
     fov_xy
         Field of view in x and y direction (in meters).
     n_readout
@@ -309,6 +315,8 @@ def main(
         Number of slices.
     receiver_bandwidth_per_pixel
         Desired receiver bandwidth per pixel (in Hz/pixel). This is used to calculate the readout duration.
+    n_dummy_excitations
+        Number of dummy excitations before data acquisition to ensure steady state.
     show_plots
         Toggles sequence plot.
     test_report
@@ -321,7 +329,6 @@ def main(
 
     # define settings of rf excitation pulse
     rf_duration = 1.28e-3  # duration of the rf excitation pulse [s]
-    rf_flip_angle = 12  # flip angle of rf excitation pulse [°]
     rf_bwt = 4  # bandwidth-time product of rf excitation pulse [Hz*s]
     rf_apodization = 0.5  # apodization factor of rf excitation pulse
     readout_oversampling = 2  # readout oversampling factor, commonly 2. This reduces aliasing artifacts.
@@ -334,8 +341,6 @@ def main(
     gx_flat_time, adc_dwell_time = find_gx_flat_time_on_adc_raster(
         n_readout_with_oversampling, adc_dwell_time, system.grad_raster_time, system.adc_raster_time
     )
-
-    n_dummy_excitations = 20  # number of dummy excitations before data acquisition to ensure steady state
 
     # define spoiling
     gz_spoil_duration = 0.8e-3  # duration of spoiler gradient [s]
@@ -405,7 +410,7 @@ def main(
     if show_plots:
         seq.plot(time_range=(0, 10 * (tr or min_tr)))
 
-    return seq
+    return seq, output_path / filename
 
 
 if __name__ == '__main__':
