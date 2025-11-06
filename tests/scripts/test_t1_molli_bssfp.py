@@ -3,12 +3,12 @@
 import pytest
 from mrseq.scripts.t1_molli_bssfp import main as create_seq
 
-EXPECTED_DUR = 6.3884  # defined 2025-10-02
+EXPECTED_DUR = 6.55339  # defined 2025-11-06
 
 
 def test_default_seq_duration(system_defaults):
     """Test if default values result in expected sequence duration."""
-    seq = create_seq(system=system_defaults, show_plots=False)
+    seq, _ = create_seq(system=system_defaults, show_plots=False)
     duration = seq.duration()[0]
     assert duration == pytest.approx(EXPECTED_DUR)
 

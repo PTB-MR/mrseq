@@ -136,7 +136,7 @@ def t1_molli_bssfp_kernel(
         + gx.delay  # potential delay of readout gradient
         + gx.rise_time  # rise time of readout gradient
         + (k0_center_id + 0.5) * adc.dwell  # time from beginning of ADC to time point of k-space center sample
-    )
+    ).item()
 
     # calculate echo time delay (te_delay)
     te_delay = 0 if te is None else round_to_raster(te - min_te, system.block_duration_raster)
@@ -174,16 +174,23 @@ def t1_molli_bssfp_kernel(
 
     # In the first part 5 images are acquired in 5 cardiac cycles, followed by 3 cardiac cycles without data
     # acquisition for signal recovery. Then 3 images are acquired in 3 cardiac cycles in the second part.
+    contrast_index = 0
     for part_idx, n_cycles in enumerate((5, 3)):
         for cardiac_index in range(n_cycles):
             if cardiac_index == 0:
-                # add trigger
-                current_trig_delay = round_to_raster(
-                    cardiac_trigger_delay
-                    - block_duration
+                # waiting time to achieve inversion time
+                delay_after_inversion_pulse = (
+                    inversion_times[part_idx]
+                    - time_since_inversion
                     - n_bssfp_startup_pulses * current_tr
                     - current_te
-                    - (inversion_times[part_idx] - time_since_inversion),
+                    - rf.shape_dur / 2
+                    - max(rf.delay, gz.rise_time)
+                )
+
+                # add trigger
+                current_trig_delay = round_to_raster(
+                    cardiac_trigger_delay - delay_after_inversion_pulse - block_duration,
                     raster_time=system.block_duration_raster,
                 )
                 seq.add_block(pp.make_trigger(channel='physio1', duration=current_trig_delay))
@@ -195,14 +202,16 @@ def t1_molli_bssfp_kernel(
                 # wait until inversion time is reached
                 seq.add_block(
                     pp.make_delay(
-                        round_to_raster(
-                            inversion_times[0] - time_since_inversion, raster_time=system.block_duration_raster
-                        )
+                        round_to_raster(delay_after_inversion_pulse, raster_time=system.block_duration_raster)
                     )
                 )
             else:
                 current_trig_delay = round_to_raster(
-                    cardiac_trigger_delay - n_bssfp_startup_pulses * current_tr - current_te,
+                    cardiac_trigger_delay
+                    - n_bssfp_startup_pulses * current_tr
+                    - current_te
+                    - rf.shape_dur / 2
+                    - max(rf.delay, gz.rise_time),
                     raster_time=system.block_duration_raster,
                 )
                 seq.add_block(pp.make_trigger(channel='physio1', duration=current_trig_delay))
@@ -229,7 +238,7 @@ def t1_molli_bssfp_kernel(
                 labels.append(
                     pp.make_label(label='IMA', type='SET', value=pe_steps[pe_index] in pe_fully_sampled_center)
                 )
-                labels.append(pp.make_label(type='SET', label='ECO', value=int(cardiac_index)))
+                labels.append(pp.make_label(type='SET', label='ECO', value=int(contrast_index)))
 
                 # calculate current phase encoding gradient
                 gy_pre = pp.make_trapezoid(
@@ -258,6 +267,8 @@ def t1_molli_bssfp_kernel(
                 # add delay in case TR > min_TR
                 if tr_delay > 0:
                     seq.add_block(pp.make_delay(tr_delay))
+
+            contrast_index += 1
 
         # add three cardiac cycles for signal recovery
         if part_idx == 0:
@@ -325,7 +336,7 @@ def main(
         system = sys_defaults
 
     if inversion_times is None:
-        inversion_times = [0.1, 0.18]
+        inversion_times = [0.1, 0.3]
 
     # define settings of rf excitation pulse
     rf_duration = 0.5e-3  # duration of the rf excitation pulse [s]
@@ -394,6 +405,7 @@ def main(
     seq.set_definition('SliceThickness', slice_thickness)
     seq.set_definition('TE', te or min_te)
     seq.set_definition('TR', tr or min_tr)
+    seq.set_definition('TI', inversion_times)
     seq.set_definition('ReadoutOversamplingFactor', readout_oversampling)
 
     # save seq-file to disk
@@ -403,7 +415,7 @@ def main(
     if show_plots:
         seq.plot()
 
-    return seq
+    return seq, output_path / filename
 
 
 if __name__ == '__main__':
