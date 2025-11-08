@@ -146,7 +146,7 @@ def t2_t2prep_flash_kernel(
         + gx.delay  # potential delay of readout gradient
         + gx.rise_time  # rise time of readout gradient
         + (k0_center_id + 0.5) * adc.dwell  # time from beginning of ADC to time point of k-space center sample
-    )
+    ).item()
 
     # calculate echo time delay (te_delay)
     te_delay = 0 if te is None else round_to_raster(te - min_te, system.block_duration_raster)
@@ -392,7 +392,7 @@ def main(
     if show_plots:
         seq.plot()
 
-    return seq
+    return seq, output_path / filename
 
 
 if __name__ == '__main__':
