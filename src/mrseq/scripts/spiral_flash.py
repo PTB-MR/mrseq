@@ -1,16 +1,15 @@
 """M2D spiral FLASH sequence."""
 
 from pathlib import Path
+from typing import Literal
 
 import ismrmrd
 import numpy as np
 import pypulseq as pp
-from pypulseq.rotate import rotate
 
-from mrseq.utils import find_gx_flat_time_on_adc_raster
 from mrseq.utils import round_to_raster
+from mrseq.utils import spiral_acquisition
 from mrseq.utils import sys_defaults
-from mrseq.utils.constants import GOLDEN_ANGLE_HALF_CIRCLE
 from mrseq.utils.ismrmrd import Fov
 from mrseq.utils.ismrmrd import Limits
 from mrseq.utils.ismrmrd import MatrixSize
@@ -23,14 +22,12 @@ def spiral_flash_kernel(
     tr: float | None,
     fov_xy: float,
     n_readout: int,
-    n_spokes: int,
-    spoke_angle: float,
-    readout_oversampling: float,
+    readout_oversampling: Literal[1, 2, 4],
+    spiral_undersampling: float,
     slice_thickness: float,
     n_slices: int,
     n_dummy_excitations: int,
     gx_pre_duration: float,
-    gx_flat_time: float,
     rf_duration: float,
     rf_flip_angle: float,
     rf_bwt: float,
@@ -54,12 +51,10 @@ def spiral_flash_kernel(
         Field of view in x and y direction (in meters).
     n_readout
         Number of frequency encoding steps.
-    n_spokes
-        Number of spiral spokes.
-    spoke_angle
-        Angle between successive spiral spokes (in radian).
     readout_oversampling
-        Readout oversampling factor, commonly 2. This reduces aliasing artifacts.
+        Readout oversampling. Determines the number of ADC samples along a spiral and the bandwidth.
+    spiral_undersampling
+        Angular undersampling of the spiral trajectoy.
     slice_thickness
         Slice thickness of the 2D slice (in meters).
     n_slices
@@ -68,8 +63,6 @@ def spiral_flash_kernel(
         Number of dummy excitations before data acquisition to ensure steady state.
     gx_pre_duration
         Duration of readout pre-winder gradient (in seconds)
-    gx_flat_time
-        Flat time of readout gradient (in seconds)
     rf_duration
         Duration of the rf excitation pulse (in seconds)
     rf_flip_angle
@@ -97,9 +90,6 @@ def spiral_flash_kernel(
         Shortest possible repetition time.
 
     """
-    if readout_oversampling < 1:
-        raise ValueError('Readout oversampling factor must be >= 1.')
-
     if n_dummy_excitations < 0:
         raise ValueError('Number of dummy excitations must be >= 0.')
 
@@ -120,38 +110,25 @@ def spiral_flash_kernel(
     )
 
     # create readout gradient and ADC
-    delta_k = 1 / (fov_xy * readout_oversampling)
-    n_readout_with_oversampling = int(n_readout * readout_oversampling)
-    gx = pp.make_trapezoid(
-        channel='x', flat_area=n_readout_with_oversampling * delta_k, flat_time=gx_flat_time, system=system
+    gx, gy, adc, trajectory, time_to_echo = spiral_acquisition(
+        system,
+        n_readout,
+        fov_xy,
+        spiral_undersampling,
+        readout_oversampling=readout_oversampling,
+        n_spirals=None,
+        max_pre_duration=gx_pre_duration,
+        spiral_type='out',
     )
-    n_readout_with_oversampling = n_readout_with_oversampling + np.mod(n_readout_with_oversampling, 2)  # make even
-    adc = pp.make_adc(num_samples=n_readout_with_oversampling, duration=gx.flat_time, delay=gx.rise_time, system=system)
-
-    # create frequency encoding pre- and re-winder gradient
-    gx_pre = pp.make_trapezoid(channel='x', area=-gx.area / 2 - delta_k / 2, duration=gx_pre_duration, system=system)
-    gx_post = pp.make_trapezoid(channel='x', area=-gx.area / 2 + delta_k / 2, duration=gx_pre_duration, system=system)
-    k0_center_id = np.where((np.arange(n_readout_with_oversampling) - n_readout_with_oversampling / 2) * delta_k == 0)[
-        0
-    ][0]
 
     # create spoiler gradients
     gz_spoil = pp.make_trapezoid(channel='z', system=system, area=gz_spoil_area, duration=gz_spoil_duration)
 
-    # calculate minimum echo time
-    if te is None:
-        gzr_gx_dur = pp.calc_duration(gzr, gx_pre)  # gzr and gx_pre are applied simultaneously
-    else:
-        gzr_gx_dur = pp.calc_duration(gzr) + pp.calc_duration(gx_pre)  # gzr and gx_pre are applied sequentially
-
     min_te = (
         rf.shape_dur / 2  # time from center to end of RF pulse
         + max(rf.ringdown_time, gz.fall_time)  # RF ringdown time or gradient fall time
-        + gzr_gx_dur  # slice selection re-phasing gradient and readout pre-winder
-        + gx.delay  # potential delay of readout gradient
-        + gx.rise_time  # rise time of readout gradient
-        + (k0_center_id + 0.5) * adc.dwell  # time from beginning of ADC to time point of k-space center sample
-    ).item()
+        + time_to_echo
+    )
 
     # calculate echo time delay (te_delay)
     te_delay = 0 if te is None else round_to_raster(te - min_te, system.block_duration_raster)
@@ -161,9 +138,8 @@ def spiral_flash_kernel(
     # calculate minimum repetition time
     min_tr = (
         pp.calc_duration(gz)  # rf pulse
-        + gzr_gx_dur  # slice selection re-phasing gradient and readout pre-winder
-        + pp.calc_duration(gx)  # readout gradient
-        + pp.calc_duration(gz_spoil, gx_post)  # gradient spoiler or readout-re-winder
+        + pp.calc_duration(gx[0], gy[0])  # readout gradient
+        + pp.calc_duration(gz_spoil)  # gradient spoiler or readout-re-winder
     )
 
     # calculate repetition time delay (tr_delay)
@@ -184,13 +160,13 @@ def spiral_flash_kernel(
     if mrd_header_file:
         hdr = create_header(
             traj_type='other',
-            encoding_fov=Fov(x=fov_xy * readout_oversampling, y=fov_xy, z=slice_thickness),
+            encoding_fov=Fov(x=fov_xy, y=fov_xy, z=slice_thickness),
             recon_fov=Fov(x=fov_xy, y=fov_xy, z=slice_thickness),
-            encoding_matrix=MatrixSize(n_x=n_readout_with_oversampling, n_y=n_readout_with_oversampling, n_z=1),
+            encoding_matrix=MatrixSize(n_x=int(n_readout), n_y=int(n_readout), n_z=1),
             recon_matrix=MatrixSize(n_x=n_readout, n_y=n_readout, n_z=1),
             dwell_time=adc.dwell,
             slice_limits=Limits(min=0, max=n_slices, center=0),
-            k1_limits=Limits(min=0, max=n_spokes, center=0),
+            k1_limits=Limits(min=0, max=len(gx), center=0),
             k2_limits=Limits(min=0, max=1, center=0),
         )
 
@@ -210,7 +186,7 @@ def spiral_flash_kernel(
         prot.append_acquisition(acq)
 
     for slice_ in range(n_slices):
-        for spoke_ in range(-n_dummy_excitations, n_spokes):
+        for spiral_ in range(-n_dummy_excitations, len(gx)):
             # calculate current phase_offset if rf_spoiling is activated
             if rf_spoiling_phase_increment > 0:
                 rf.phase_offset = rf_phase / 180 * np.pi
@@ -226,42 +202,28 @@ def spiral_flash_kernel(
             rf_inc = divmod(rf_inc + rf_spoiling_phase_increment, 360.0)[1]
             rf_phase = divmod(rf_phase + rf_inc, 360.0)[1]
 
-            # calculate rotation angle for the current spoke
-            rotation_angle_rad = spoke_angle * spoke_
-
             if te is not None:
-                seq.add_block(gzr)
                 seq.add_block(pp.make_delay(te_delay))
-                seq.add_block(*rotate(gx_pre, angle=rotation_angle_rad, axis='z'))
-            else:
-                seq.add_block(*rotate(gx_pre, gzr, angle=rotation_angle_rad, axis='z'))
 
-            # rotate and add the readout gradient and ADC
-            if spoke_ >= 0:
+            if spiral_ >= 0:
                 labels = []
-                labels.append(pp.make_label(label='LIN', type='SET', value=spoke_))
+                labels.append(pp.make_label(label='LIN', type='SET', value=spiral_))
                 labels.append(pp.make_label(label='SLC', type='SET', value=slice_))
-                seq.add_block(*rotate(gx, adc, angle=rotation_angle_rad, axis='z'), *labels)
+                seq.add_block(gx[spiral_], gy[spiral_], gzr, adc)
             else:
-                seq.add_block(pp.make_delay(pp.calc_duration(gx, adc)))
-
-            seq.add_block(*rotate(gx_post, gz_spoil, angle=rotation_angle_rad, axis='z'))
+                seq.add_block(pp.make_delay(pp.calc_duration(gx[spiral_], gy[spiral_], gzr, adc)))
+            seq.add_block(gz_spoil)
 
             # add delay in case TR > min_TR
             if tr_delay > 0:
                 seq.add_block(pp.make_delay(tr_delay))
 
-            if mrd_header_file and spoke_ >= 0:
+            if mrd_header_file and spiral_ >= 0:
                 # add acquisitions to metadata
-                k_spiral_line = np.linspace(
-                    -n_readout_with_oversampling // 2,
-                    (n_readout_with_oversampling // 2) - 1,
-                    n_readout_with_oversampling,
-                )
-                spiral_trajectory = np.zeros((n_readout_with_oversampling, 2), dtype=np.float32)
+                spiral_trajectory = np.zeros((trajectory.shape[1], 2), dtype=np.float32)
 
-                spiral_trajectory[:, 0] = k_spiral_line * np.cos(rotation_angle_rad)
-                spiral_trajectory[:, 1] = k_spiral_line * np.sin(rotation_angle_rad)
+                spiral_trajectory[:, 0] = trajectory[spiral_, :, 0]
+                spiral_trajectory[:, 1] = trajectory[spiral_, :, 1]
 
                 acq = ismrmrd.Acquisition()
                 acq.resize(trajectory_dimensions=2, number_of_samples=adc.num_samples)
@@ -282,10 +244,10 @@ def main(
     rf_flip_angle: float = 12,
     fov_xy: float = 128e-3,
     n_readout: int = 128,
-    n_spokes: int = 128,
+    readout_oversampling: Literal[1, 2, 4] = 2,
+    n_spiral_arms: int = 128,
     slice_thickness: float = 8e-3,
     n_slices: int = 1,
-    receiver_bandwidth_per_pixel: float = 800,  # Hz/pixel
     n_dummy_excitations: int = 20,
     show_plots: bool = True,
     test_report: bool = True,
@@ -307,14 +269,14 @@ def main(
         Field of view in x and y direction (in meters).
     n_readout
         Number of frequency encoding steps.
-    n_spokes
-        Number of spiral lines.
+    readout_oversampling
+        Readout oversampling. Determines the number of ADC samples along a spiral and the bandwidth.
+    n_spiral_arms
+        Number of spiral arms.
     slice_thickness
         Slice thickness of the 2D slice (in meters).
     n_slices
         Number of slices.
-    receiver_bandwidth_per_pixel
-        Desired receiver bandwidth per pixel (in Hz/pixel). This is used to calculate the readout duration.
     n_dummy_excitations
         Number of dummy excitations before data acquisition to ensure steady state.
     show_plots
@@ -332,15 +294,9 @@ def main(
     rf_bwt = 4  # bandwidth-time product of rf excitation pulse [Hz*s]
     rf_apodization = 0.5  # apodization factor of rf excitation pulse
     readout_oversampling = 2  # readout oversampling factor, commonly 2. This reduces aliasing artifacts.
-    spoke_angle = GOLDEN_ANGLE_HALF_CIRCLE
 
-    # define ADC and gradient timing
-    n_readout_with_oversampling = int(n_readout * readout_oversampling)
-    adc_dwell_time = 1.0 / (receiver_bandwidth_per_pixel * n_readout_with_oversampling)
+    # gradient timing
     gx_pre_duration = 1.0e-3  # duration of readout pre-winder gradient [s]
-    gx_flat_time, adc_dwell_time = find_gx_flat_time_on_adc_raster(
-        n_readout_with_oversampling, adc_dwell_time, system.grad_raster_time, system.adc_raster_time
-    )
 
     # define spoiling
     gz_spoil_duration = 0.8e-3  # duration of spoiler gradient [s]
@@ -348,7 +304,7 @@ def main(
     rf_spoiling_phase_increment = 117  # RF spoiling phase increment [°]. Set to 0 for no RF spoiling.
 
     # define sequence filename
-    filename = f'{Path(__file__).stem}_{int(fov_xy * 1000)}fov_{n_readout}nx_{n_spokes}na_{n_slices}ns'
+    filename = f'{Path(__file__).stem}_{int(fov_xy * 1000)}fov_{n_readout}nx_{n_spiral_arms}na_{n_slices}ns'
 
     output_path = Path.cwd() / 'output'
     output_path.mkdir(parents=True, exist_ok=True)
@@ -363,14 +319,12 @@ def main(
         tr=tr,
         fov_xy=fov_xy,
         n_readout=n_readout,
-        n_spokes=n_spokes,
-        spoke_angle=spoke_angle,
         readout_oversampling=readout_oversampling,
+        spiral_undersampling=n_spiral_arms / n_readout,
         slice_thickness=slice_thickness,
         n_slices=n_slices,
         n_dummy_excitations=n_dummy_excitations,
         gx_pre_duration=gx_pre_duration,
-        gx_flat_time=gx_flat_time,
         rf_duration=rf_duration,
         rf_flip_angle=rf_flip_angle,
         rf_bwt=rf_bwt,
@@ -401,7 +355,6 @@ def main(
     seq.set_definition('SliceThickness', slice_thickness)
     seq.set_definition('TE', te or min_te)
     seq.set_definition('TR', tr or min_tr)
-    seq.set_definition('ReadoutOversamplingFactor', readout_oversampling)
 
     # save seq-file to disk
     print(f"\nSaving sequence file '{filename}.seq' into folder '{output_path}'.")
