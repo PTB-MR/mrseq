@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Jupyter book
+examples/_build/
+
 # C extensions
 *.so
 
@@ -27,6 +30,7 @@ __pycache__/
 *.zip
 *.gz
 *.seq
+*.mat 
 
 # Distribution / packaging
 .Python

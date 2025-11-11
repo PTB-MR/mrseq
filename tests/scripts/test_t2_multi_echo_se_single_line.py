@@ -9,7 +9,7 @@ EXPECTED_DUR = 5120.000970  # defined 2025-02-06
 
 def test_default_seq_duration(system_defaults):
     """Test if default values result in expected sequence duration."""
-    seq = create_seq(system=system_defaults, show_plots=False)
+    seq, _ = create_seq(system=system_defaults, show_plots=False)
     duration = seq.duration()[0]
     assert duration == pytest.approx(EXPECTED_DUR)
 
@@ -28,7 +28,7 @@ def test_seq_creation_error_on_short_tr(system_defaults):
 
 def test_seq_duration_vary_params_without_changing_duration(system_defaults):
     """Test if sequence duration is as expected."""
-    seq = create_seq(
+    seq, _ = create_seq(
         system=system_defaults,
         fov_xy=192e-3,  # default 128e-3
         n_readout=192,  # default 128

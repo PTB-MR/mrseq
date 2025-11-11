@@ -321,7 +321,7 @@ def main(
     seq.set_definition('FOV', [fov_xy, fov_xy, slice_thickness])
     seq.set_definition('ReconMatrix', (n_readout, n_phase_encoding, 1))
     seq.set_definition('SliceThickness', slice_thickness)
-    seq.set_definition('TE', echo_times)
+    seq.set_definition('TE', echo_times.tolist())
     seq.set_definition('TR', tr)
 
     # save seq-file to disk
@@ -334,7 +334,7 @@ def main(
     if show_plots:
         seq.plot(time_range=(0, min_tr_first_echo_block))
 
-    return seq
+    return seq, output_path / filename
 
 
 if __name__ == '__main__':

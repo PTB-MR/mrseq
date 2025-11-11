@@ -1,0 +1,66 @@
+name: examples
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v5
+
+      # Install dependencies
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install mrpro and dependencies
+        run: |
+          pip install --index-url=https://download.pytorch.org/whl/cpu \
+                      --extra-index-url https://pypi.org/simple/ \
+                      --upgrade --upgrade-strategy eager -e .[dev]
+
+      # Build the book
+      - name: Build the book
+        run: jupyter-book build examples
+
+      # Upload the book's HTML as an artifact (useful for PR previews)
+      - name: Upload built HTML
+        uses: actions/upload-artifact@v5
+        with:
+          name: built-book
+          path: examples/_build/html
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      pages: write
+      id-token: write
+
+    steps:
+      - name: Download built HTML
+        uses: actions/download-artifact@v6
+        with:
+          name: built-book
+          path: examples/_build/html
+
+      # Upload to GitHub Pages
+      - name: Upload artifact for Pages
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: examples/_build/html
+
+      # Deploy the book's HTML to GitHub Pages
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
