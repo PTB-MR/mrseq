@@ -245,7 +245,7 @@ def spiral_acquisition(
         for gy_pre, gy_in_out, gy_rew in zip(gy_pre, gy, gy_rew, strict=True)
     ]
 
-    # -1 to match pulseq trajectory calculation
+    # times -1 to match pulseq trajectory calculation
     trajectory = -np.stack((np.asarray(traj).real, np.asarray(traj).imag), axis=-1)
 
     time_to_echo = max_pre_duration + n_samples_to_echo * readout_oversampling * adc.dwell

@@ -225,8 +225,9 @@ def spiral_flash_kernel(
                 # add acquisitions to metadata
                 spiral_trajectory = np.zeros((trajectory.shape[1], 2), dtype=np.float32)
 
-                spiral_trajectory[:, 0] = trajectory[spiral_, :, 0]
-                spiral_trajectory[:, 1] = trajectory[spiral_, :, 1]
+                # the spiral trajectory is calculated in units of delta_k. for image reconstruction we use delta_k = 1
+                spiral_trajectory[:, 0] = trajectory[spiral_, :, 0] * fov_xy
+                spiral_trajectory[:, 1] = trajectory[spiral_, :, 1] * fov_xy
 
                 acq = ismrmrd.Acquisition()
                 acq.resize(trajectory_dimensions=2, number_of_samples=adc.num_samples)
@@ -296,7 +297,7 @@ def main(
     rf_duration = 1.28e-3  # duration of the rf excitation pulse [s]
     rf_bwt = 4  # bandwidth-time product of rf excitation pulse [Hz*s]
     rf_apodization = 0.5  # apodization factor of rf excitation pulse
-    readout_oversampling = 1  # readout oversampling factor, commonly 2. This reduces aliasing artifacts.
+    readout_oversampling = 2  # readout oversampling factor, commonly 2. This reduces aliasing artifacts.
 
     # gradient timing
     gx_pre_duration = 1.0e-3  # duration of readout pre-winder gradient [s]
@@ -323,7 +324,7 @@ def main(
         fov_xy=fov_xy,
         n_readout=n_readout,
         readout_oversampling=readout_oversampling,
-        spiral_undersampling=n_spiral_arms / n_readout,
+        spiral_undersampling=n_readout / n_spiral_arms,
         slice_thickness=slice_thickness,
         n_slices=n_slices,
         n_dummy_excitations=n_dummy_excitations,
