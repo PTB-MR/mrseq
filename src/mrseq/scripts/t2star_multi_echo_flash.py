@@ -160,7 +160,7 @@ def t2star_multi_echo_flash_kernel(
         + multi_echo_gradient._gx.delay  # potential delay of readout gradient
         + multi_echo_gradient._gx.rise_time  # rise time of readout gradient
         + (multi_echo_gradient._n_readout_pre_echo + 0.5) * multi_echo_gradient._adc.dwell
-    )
+    ).item()
 
     # calculate echo time delay (te_delay)
     te_delay = 0 if te is None else round_to_raster(te - min_te, system.block_duration_raster)
@@ -175,7 +175,7 @@ def t2star_multi_echo_flash_kernel(
         + pp.calc_duration(multi_echo_gradient._gx) * n_echoes  # readout gradient
         + pp.calc_duration(multi_echo_gradient._gx_between) * (n_echoes - 1)  # readout gradient
         + pp.calc_duration(gz_spoil, multi_echo_gradient._gx_post)  # gradient spoiler or readout-re-winder
-    )
+    ).item()
 
     # calculate repetition time delay (tr_delay)
     current_min_tr = min_tr + te_delay
@@ -212,7 +212,7 @@ def t2star_multi_echo_flash_kernel(
     if mrd_header_file:
         acq = ismrmrd.Acquisition()
         acq.resize(trajectory_dimensions=2, number_of_samples=multi_echo_gradient._adc.num_samples)
-        # prot.append_acquisition(acq)
+        prot.append_acquisition(acq)
 
     # choose initial rf phase offset
     rf_phase = 0
@@ -444,7 +444,7 @@ def main(
     if show_plots:
         seq.plot()
 
-    return seq
+    return seq, output_path / filename
 
 
 if __name__ == '__main__':

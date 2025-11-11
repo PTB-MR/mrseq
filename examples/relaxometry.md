@@ -12,3 +12,4 @@ Available examples are:
 - [T1 mapping using an inversion pulse and a single line spin echo readout](t1_inv_rec_se_single_line.ipynb)
 - [T2 mapping using a multi-echo spin echo readout](t2_multi_echo_se_single_line.ipynb)
 - [T1rho mapping using a spin-lock preparation pulse and a single line spin echo readout](t1rho_se_single_line.ipynb)
+- [T2star mapping using a multi-echo FLASH sequence](t2star_multi_echo_flash.ipynb)
