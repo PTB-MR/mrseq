@@ -127,6 +127,7 @@ def spiral_flash_kernel(
     min_te = (
         rf.shape_dur / 2  # time from center to end of RF pulse
         + max(rf.ringdown_time, gz.fall_time)  # RF ringdown time or gradient fall time
+        + pp.calc_duration(gzr)  # slice rewinder
         + time_to_echo
     )
 
@@ -138,6 +139,7 @@ def spiral_flash_kernel(
     # calculate minimum repetition time
     min_tr = (
         pp.calc_duration(gz)  # rf pulse
+        + pp.calc_duration(gzr)  # slice rewinder
         + pp.calc_duration(gx[0], gy[0])  # readout gradient
         + pp.calc_duration(gz_spoil)  # gradient spoiler or readout-re-winder
     )
@@ -197,6 +199,7 @@ def spiral_flash_kernel(
 
             # add slice selective excitation pulse
             seq.add_block(rf, gz)
+            seq.add_block(gzr)
 
             # update rf phase offset for the next excitation pulse
             rf_inc = divmod(rf_inc + rf_spoiling_phase_increment, 360.0)[1]
@@ -209,9 +212,9 @@ def spiral_flash_kernel(
                 labels = []
                 labels.append(pp.make_label(label='LIN', type='SET', value=spiral_))
                 labels.append(pp.make_label(label='SLC', type='SET', value=slice_))
-                seq.add_block(gx[spiral_], gy[spiral_], gzr, adc)
+                seq.add_block(gx[spiral_], gy[spiral_], adc, *labels)
             else:
-                seq.add_block(pp.make_delay(pp.calc_duration(gx[spiral_], gy[spiral_], gzr, adc)))
+                seq.add_block(pp.make_delay(pp.calc_duration(gx[0], gy[0], adc)))
             seq.add_block(gz_spoil)
 
             # add delay in case TR > min_TR
@@ -293,7 +296,7 @@ def main(
     rf_duration = 1.28e-3  # duration of the rf excitation pulse [s]
     rf_bwt = 4  # bandwidth-time product of rf excitation pulse [Hz*s]
     rf_apodization = 0.5  # apodization factor of rf excitation pulse
-    readout_oversampling = 2  # readout oversampling factor, commonly 2. This reduces aliasing artifacts.
+    readout_oversampling = 1  # readout oversampling factor, commonly 2. This reduces aliasing artifacts.
 
     # gradient timing
     gx_pre_duration = 1.0e-3  # duration of readout pre-winder gradient [s]
