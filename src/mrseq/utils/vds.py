@@ -326,7 +326,7 @@ def variable_density_spiral_trajectory(
     # Determine the number of points in the trajectory
     n_points = len(radial_positions)
 
-    # Convert lists to numpy arrays
+    # Convert lists to numpy arrays with shape (n_points, 1)
     angular_positions = np.array(angular_positions)[:, np.newaxis]
     radial_positions = np.array(radial_positions)[:, np.newaxis]
     time_points = np.arange(n_points)[:, np.newaxis] * sampling_period_os
@@ -351,7 +351,7 @@ def variable_density_spiral_trajectory(
     k_shifted_backward = np.vstack([k_space_trajectory, np.zeros((1, 1), dtype=complex)])
     grad_waveform = (k_shifted_forward - k_shifted_backward)[:-1] / sampling_period
 
-    # Recalculate k-space positions at midpoints between time steps for accuracy
+    # Recalculate k-space positions at midpoints between time steps to match Pulseq definition
     initial_point = [grad_waveform[0] * sampling_period / 4]
     mid_points = (grad_waveform[:-1] + grad_waveform[1:]) * sampling_period / 2
     k_space_trajectory = -np.cumsum(np.concatenate((initial_point, mid_points)))

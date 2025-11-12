@@ -16,7 +16,7 @@ def undersampled_variable_density_spiral(system: pp.Opts, n_readout: int, fov: f
     approach in order to achieve a variable density spiral with a certain number of readout samplings and undersampling
     factor.
 
-    During the iterative search the undersampling for the edge of k-space is increased. If this is not enough, then we
+    During the iterative search, the undersampling for the edge of k-space is increased. If this is not enough, then we
     also start to increase the undersampling in the k-space center. The field-of-view varies linearly bewtween the
     k-space center and k-space edge.
 
@@ -36,13 +36,13 @@ def undersampled_variable_density_spiral(system: pp.Opts, n_readout: int, fov: f
     Returns
     -------
     tuple(np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, float, float)
-        - k-space trajectory (k)
-        - Gradient waveform (g)
-        - Slew rate (s)
-        - Time points for the trajectory (time)
-        - Radius values (r)
+        - k-space trajectory (traj)
+        - Gradient waveform (grad)
+        - Slew rate (slew)
+        - Time points for the trajectory (timing)
+        - Radius values (radius)
         - Angular positions (theta)
-        - Number of spiral arms
+        - Number of spiral arms (n_spirals)
         - Scaling of the field-of-view in the k-space center
         - Scaling of the field-of-view in the k-space edge
 
@@ -56,7 +56,7 @@ def undersampled_variable_density_spiral(system: pp.Opts, n_readout: int, fov: f
         fov_coefficients = [fov * fov_scaling_center, -fov * (1 - fov_scaling_edge)]
 
         try:
-            traj, grad, s, timing, r, theta = variable_density_spiral_trajectory(
+            traj, grad, slew, timing, radius, theta = variable_density_spiral_trajectory(
                 system=system,
                 sampling_period=system.grad_raster_time,
                 n_interleaves=n_spirals,
@@ -68,7 +68,6 @@ def undersampled_variable_density_spiral(system: pp.Opts, n_readout: int, fov: f
         except ValueError:
             # It is not possible to achieve the desired undersampling factor with the given system limits while keeping
             # the full field-of-view in the k-space center. Reduce the field-of-view and try again.
-            # print(e)
             n_k0 = np.inf
             fov_scaling_center *= 0.95
             fov_scaling_edge = fov_scaling_center
@@ -76,7 +75,7 @@ def undersampled_variable_density_spiral(system: pp.Opts, n_readout: int, fov: f
         if fov_scaling_center < 0.1:
             raise ValueError('Cannot find a suitable trajectory.')
 
-    return traj, grad, s, timing, r, theta, n_spirals, fov_coefficients[0] / fov, fov_coefficients[1] / fov + 1
+    return traj, grad, slew, timing, radius, theta, n_spirals, fov_coefficients[0] / fov, fov_coefficients[1] / fov + 1
 
 
 def spiral_acquisition(

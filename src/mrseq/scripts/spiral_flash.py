@@ -46,7 +46,7 @@ def spiral_flash_kernel(
     te
         Desired echo time (TE) (in seconds). Minimum echo time is used if set to None.
     tr
-        Desired repetition time (TR) (in seconds).
+        Desired repetition time (TR) (in seconds). Minimum repetition time is used if set to None.
     fov_xy
         Field of view in x and y direction (in meters).
     n_readout
