@@ -119,7 +119,7 @@ def t1_inv_rec_gre_single_line_kernel(
         + gx.delay  # potential delay of readout gradient
         + gx.rise_time  # rise time of readout gradient
         + (k0_center_id + 0.5) * adc.dwell  # time from beginning of ADC to time point of k-space center sample
-    )
+    ).item()
 
     # calculate delay to achieve desired echo time
     if te is None:
@@ -127,7 +127,7 @@ def t1_inv_rec_gre_single_line_kernel(
     elif te > min_te:
         te_delay = round_to_raster(te - min_te, system.block_duration_raster)
     else:
-        raise ValueError(f'TE must be larger than {min_te * 1000:.2f} ms. Current value is {te * 1000:.2f} ms.')
+        raise ValueError(f'TE must be larger than {min_te * 1000:.3f} ms. Current value is {te * 1000:.3f} ms.')
 
     print(f'\nMinimum TE: {min_te * 1000:.3f} ms')
 
@@ -307,7 +307,7 @@ def main(
     seq.set_definition('SliceThickness', slice_thickness)
     seq.set_definition('TE', te or min_te)
     seq.set_definition('TR', tr)
-    seq.set_definition('TI', inversion_times)
+    seq.set_definition('TI', inversion_times.tolist())
 
     # save seq-file to disk
     output_path = Path.cwd() / 'output'
@@ -318,7 +318,7 @@ def main(
     if show_plots:
         seq.plot(time_range=(0, time_to_first_tr_block))
 
-    return seq
+    return seq, output_path / filename
 
 
 if __name__ == '__main__':

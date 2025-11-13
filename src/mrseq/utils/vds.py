@@ -1,7 +1,109 @@
 """Functions to generate a variable density spiral trajectory.
 
-The code is originally based on MATLAB code of Brian Hargreaves:
+Program translated from the matlab program of Brian Hargreaves:
 http://mrsrl.stanford.edu/~brian/vdspiral/
+
+Description given by Brian Hargreaves
+
+    function [k,g,s,time,r,theta] = vds(smax,gmax,T,N,Fcoeff,rmax)
+
+    VARIABLE DENSITY SPIRAL GENERATION:
+    ----------------------------------
+
+    Function generates variable density spiral which traces
+    out the trajectory
+
+            k(t) = r(t) exp(i*q(t)), 		[1]
+
+    Where q is the same as theta...
+        r and q are chosen to satisfy:
+
+        1) Maximum gradient amplitudes and slew rates.
+        2) Maximum gradient due to FOV, where FOV can
+           vary with k-space radius r/rmax, as
+
+            FOV(r) = Sum    Fcoeff(k)*(r/rmax)^(k-1)   [2]
+
+
+    INPUTS:
+    -------
+    smax = maximum slew rate in Hz/m/s
+    gmax = maximum gradient in Hz/m (limited by Gmax or FOV)
+    T = sampling period (s) for gradient AND acquisition.
+    N = number of interleaves.
+    Fcoeff = FOV coefficients with respect to r - see above.
+    rmax= value of k-space radius at which to stop (m^-1).
+        rmax = 1/(2*resolution)
+
+
+    OUTPUTS:
+    --------
+    k = k-space trajectory (kx+iky) in m-1.
+    g = gradient waveform (Gx+iGy) in Hz/m.
+    s = derivative of g (Sx+iSy) in Hz/m/s.
+    time = time points corresponding to above (s).
+    r = k-space radius vs time (used to design spiral)
+    theta = atan2(ky,kx) = k-space angle vs time.
+
+Methods
+-------
+    Let r1 and r2 be the first derivatives of r in [1].
+    Let q1 and q2 be the first derivatives of theta in [1].
+    Also, r0 = r, and q0 = theta - sometimes both are used.
+    F = F(r) defined by Fcoeff.
+
+    Differentiating [1], we can get G = a(r0,r1,q0,q1,F)
+    and differentiating again, we get S = b(r0,r1,r2,q0,q1,q2,F)
+
+    (functions a() and b() are reasonably easy to obtain.)
+
+    FOV limits put a constraint between r and q:
+
+        dr/dq = N/(2*pi*F)				[3]
+
+    We can use [3] and the chain rule to give
+
+        q1 = 2*pi*F/N * r1				[4]
+
+    and
+
+        q2 = 2*pi/N*dF/dr*r1^2 + 2*pi*F/N*r2		[5]
+
+
+
+    Now using [4] and [5], we can substitute for q1 and q2
+    in functions a() and b(), giving
+
+        G = c(r0,r1,F)
+    and 	S = d(r0,r1,r2,F,dF/dr)
+
+    Using the fact that the spiral should be either limited
+    by amplitude (Gradient or FOV limit) or slew rate, we can
+    solve
+        |c(r0,r1,F)| = |Gmax|  				[6]
+
+    analytically for r1, or
+
+        |d(r0,r1,r2,F,dF/dr)| = |Smax|	 		[7]
+
+    analytically for r2.
+
+    [7] is a quadratic equation in r2.  The smaller of the
+    roots is taken, and the np.real part of the root is used to
+    avoid possible numeric errors - the roots should be np.real
+    always.
+
+    The choice of whether or not to use [6] or [7], and the
+    solving for r2 or r1 is done by findq2r2 - in this .m file.
+
+    Once the second derivative of theta(q) or r is obtained,
+    it can be integrated to give q1 and r1, and then integrated
+    again to give q and r.  The gradient waveforms follow from
+    q and r.
+
+    Brian Hargreaves -- Sept 2000.
+
+    See Brian's journal, Vol 6, P.24.
 """
 
 import numpy as np
@@ -13,11 +115,11 @@ def quadratic_formula_solver(a: float, b: float, c: float) -> tuple[float, float
 
     Parameters
     ----------
-    a : float
+    a
         Coefficient of the x^2 term.
-    b : float
+    b
         Coefficient of the x term.
-    c : float
+    c
         Constant term of the equation.
 
     Returns
@@ -26,8 +128,12 @@ def quadratic_formula_solver(a: float, b: float, c: float) -> tuple[float, float
         The two roots (solutions) of the quadratic equation.
     """
     discriminant = b**2 - 4 * a * c
-    root1 = (-b + np.sqrt(discriminant)) / (2 * a)
-    root2 = (-b - np.sqrt(discriminant)) / (2 * a)
+    if discriminant < 0:  # we only take the real part
+        root1 = -b / (2 * a)
+        root2 = -b / (2 * a)
+    else:
+        root1 = (-b + np.sqrt(discriminant)) / (2 * a)
+        root2 = (-b - np.sqrt(discriminant)) / (2 * a)
 
     return root1, root2
 
@@ -47,23 +153,23 @@ def calculate_angular_and_radial_acceleration(
 
     Parameters
     ----------
-    max_slew : float
+    max_slew
         Maximum slew rate of the system in Hz/m/s.
-    max_grad : float
+    max_grad
         Maximum gradient amplitude in Hz/m.
-    radius : float
+    radius
         Current radius of the spiral being constructed in meters.
-    radius_derivative : float
+    radius_derivative
         Derivative of the radius (rate of change) of the spiral in meters.
-    sampling_period : float
+    sampling_period
         Sampling period (s) for gradient and acquisition.
-    sampling_period_os : float
+    sampling_period_os
         Sampling period (s) for gradient and acquisition, divided by an oversampling factor.
-    n_interleaves : int
+    n_interleaves
         Number of spiral arms (interleaves).
-    fov_coefficients : list
+    fov_coefficients
         List of coefficients defining the Field of View (FOV) profile.
-    max_kspace_radius : float
+    max_kspace_radius
         Maximum radius in k-space in m^(-1).
 
     Returns
@@ -128,10 +234,10 @@ def calculate_angular_and_radial_acceleration(
 
         # Print warning if slew rate violation detected
         if slew_rate_ratio > 1.0 + 1e-6:
-            print(
+            raise ValueError(
                 f'Slew rate violation detected for radius = {radius}.\n'
                 f'Current slew rate = {round(np.abs(slew_rate_vector))} '
-                f'Maximum slew rate = {round(max_slew)} (ratio = {round(slew_rate_ratio)})\n'
+                f'Maximum slew rate = {round(max_slew)} (ratio = {round(slew_rate_ratio, 2)})\n'
             )
 
     # Calculate angular acceleration (q2)
@@ -154,15 +260,15 @@ def variable_density_spiral_trajectory(
 
     Parameters
     ----------
-    system : pp.Opts
+    system
         PyPulseq system object containing gradient and slew rate limits.
-    sampling_period : float
+    sampling_period
         Base sampling period for gradient and acquisition.
-    n_interleaves : int
+    n_interleaves
         Number of spiral arms (interleaves) in the trajectory.
-    fov_coefficients : list
+    fov_coefficients
         Coefficients defining the Field of View (FOV) profile.
-    max_kspace_radius : float
+    max_kspace_radius
         Maximum k-space radius in inverse meters.
 
     Returns
@@ -220,7 +326,7 @@ def variable_density_spiral_trajectory(
     # Determine the number of points in the trajectory
     n_points = len(radial_positions)
 
-    # Convert lists to numpy arrays
+    # Convert lists to numpy arrays with shape (n_points, 1)
     angular_positions = np.array(angular_positions)[:, np.newaxis]
     radial_positions = np.array(radial_positions)[:, np.newaxis]
     time_points = np.arange(n_points)[:, np.newaxis] * sampling_period_os
@@ -245,7 +351,7 @@ def variable_density_spiral_trajectory(
     k_shifted_backward = np.vstack([k_space_trajectory, np.zeros((1, 1), dtype=complex)])
     grad_waveform = (k_shifted_forward - k_shifted_backward)[:-1] / sampling_period
 
-    # Recalculate k-space positions at midpoints between time steps for accuracy
+    # Recalculate k-space positions at midpoints between time steps to match Pulseq definition
     initial_point = [grad_waveform[0] * sampling_period / 4]
     mid_points = (grad_waveform[:-1] + grad_waveform[1:]) * sampling_period / 2
     k_space_trajectory = -np.cumsum(np.concatenate((initial_point, mid_points)))
