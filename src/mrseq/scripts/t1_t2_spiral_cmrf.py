@@ -10,7 +10,10 @@ from mrseq.preparations import add_t1_inv_prep
 from mrseq.preparations import add_t2_prep
 from mrseq.utils import round_to_raster
 from mrseq.utils import sys_defaults
-from mrseq.utils.create_ismrmrd_header import create_header
+from mrseq.utils.ismrmrd import Fov
+from mrseq.utils.ismrmrd import Limits
+from mrseq.utils.ismrmrd import MatrixSize
+from mrseq.utils.ismrmrd import create_header
 from mrseq.utils.vds import variable_density_spiral_trajectory
 
 
@@ -21,7 +24,7 @@ def t1_t2_spiral_cmrf_kernel(
     cardiac_trigger_delay: float,
     fov_xy: float,
     variable_fov_coefficient: float,
-    n_xy: int,
+    n_readout: int,
     slice_thickness: float,
     rf_inv_duration: float,
     rf_inv_spoil_risetime: float,
@@ -47,8 +50,8 @@ def t1_t2_spiral_cmrf_kernel(
         Field of view in x and y direction (in meters).
     variable_fov_coefficient
         Coefficient for variable density spiral trajectory.
-    n_xy
-        Number of voxel along x and y direction.
+    n_readout
+        Number of readout points.
     slice_thickness
         Slice thickness of the 2D slice (in meters).
     rf_inv_duration
@@ -88,9 +91,9 @@ def t1_t2_spiral_cmrf_kernel(
     minimum_time_to_set_label = 1e-5  # minimum time to set a label (in seconds)
 
     # define VDS readout parameters
-    if fov_xy == 128e-3 and n_xy == 128:
+    if (fov_xy == 200e-3 and n_readout == 128) or (fov_xy == 128e-3 and n_readout == 128):
         n_spirals_for_traj_calc = 16
-    elif fov_xy == 300e-3 and n_xy == 192:
+    elif fov_xy == 300e-3 and n_readout == 192:
         n_spirals_for_traj_calc = 24
     else:
         print('Please double check the number of spirals for trajectory calculation.')
@@ -129,8 +132,8 @@ def t1_t2_spiral_cmrf_kernel(
     )
 
     # calculate variable density spiral (VDS) trajectory
-    max_kspace_radius = 0.5 / fov_xy * n_xy
-    k, g, s, timing, r, theta = variable_density_spiral_trajectory(
+    max_kspace_radius = 0.5 / fov_xy * n_readout
+    k, g, _, _, _, _ = variable_density_spiral_trajectory(
         system=system,
         sampling_period=system.grad_raster_time,
         n_interleaves=n_spirals_for_traj_calc,
@@ -219,7 +222,7 @@ def t1_t2_spiral_cmrf_kernel(
 
     # calculate minimum echo time (TE) for sequence header
     min_te = pp.calc_duration(gz_dummy) / 2 + pp.calc_duration(gzr_dummy) + adc.delay
-    min_te = round_to_raster(min_te, system.grad_raster_time)
+    min_te = round_to_raster(min_te, system.grad_raster_time).item()
 
     # calculate minimum repetition time (TR)
     min_tr = (
@@ -228,7 +231,7 @@ def t1_t2_spiral_cmrf_kernel(
         + pp.calc_duration(gx_readout_list[0])  # readout
         + max_rewinder_duration  # max of rewinder gradients / gz_spoil durations
         + minimum_time_to_set_label  # min time to set labels
-    )
+    ).item()
 
     # ensure minimum TR is on gradient raster
     min_tr = round_to_raster(min_tr, system.grad_raster_time)
@@ -240,23 +243,27 @@ def t1_t2_spiral_cmrf_kernel(
         tr_delay = round_to_raster((tr - min_tr + minimum_time_to_set_label), system.grad_raster_time)
 
     if not tr_delay >= 0:
-        raise ValueError(f'TR must be larger than {min_tr * 1000:.2f} ms. Current value is {tr * 1000:.2f} ms.')
+        raise ValueError(f'TR must be larger than {min_tr * 1000:.3f} ms. Current value is {tr * 1000:.3f} ms.')
 
     # print TE / TR values
     final_tr = min_tr if tr is None else (min_tr - minimum_time_to_set_label) + tr_delay
     print('\n Manual timing calculations:')
-    print(f'\n shortest possible TR = {min_tr * 1000:.2f} ms')
-    print(f'\n final TR = {final_tr * 1000:.2f} ms')
+    print(f'\n shortest possible TR = {min_tr * 1000:.3f} ms')
+    print(f'\n final TR = {final_tr * 1000:.3f} ms')
 
+    # create header
     # create header
     if mrd_header_file:
         hdr = create_header(
-            traj_type='radial',
-            fov=fov_xy,
-            res=fov_xy / n_xy,
-            slice_thickness=slice_thickness,
-            dt=adc.dwell,
-            n_k1=len(flip_angles),
+            traj_type='other',
+            encoding_fov=Fov(x=fov_xy, y=fov_xy, z=slice_thickness),
+            recon_fov=Fov(x=fov_xy, y=fov_xy, z=slice_thickness),
+            encoding_matrix=MatrixSize(n_x=int(n_readout), n_y=int(n_readout), n_z=1),
+            recon_matrix=MatrixSize(n_x=n_readout, n_y=n_readout, n_z=1),
+            dwell_time=adc.dwell,
+            slice_limits=Limits(min=0, max=1, center=0),
+            k1_limits=Limits(min=0, max=len(gx_readout_list), center=0),
+            k2_limits=Limits(min=0, max=1, center=0),
         )
 
         # write header to file
@@ -394,7 +401,7 @@ def main(
     cardiac_trigger_delay: float = 0.4,
     fov_xy: float = 128e-3,
     variable_fov_coefficient: float = -0.75,
-    n_xy: int = 128,
+    n_readout: int = 128,
     slice_thickness: float = 8e-3,
     show_plots: bool = True,
     test_report: bool = True,
@@ -416,8 +423,8 @@ def main(
         Field of view in x and y direction (in meters).
     variable_fov_coefficient
         Coefficient for variable density spiral trajectory.
-    n_xy
-        Number of voxel along x and y direction.
+    n_readout
+        Number of readout points.
     slice_thickness
         Slice thickness of the 2D slice (in meters).
     show_plots
@@ -444,7 +451,7 @@ def main(
     rf_apodization = 0.5  # apodization factor of rf excitation pulse
 
     # define sequence filename
-    filename = f'{Path(__file__).stem}_{fov_xy * 1000:.0f}fov_{n_xy}px_'
+    filename = f'{Path(__file__).stem}_{fov_xy * 1000:.0f}fov_{n_readout}px_'
     filename += f'trig{int(cardiac_trigger_delay * 1000)}ms'
 
     output_path = Path.cwd() / 'output'
@@ -461,7 +468,7 @@ def main(
         cardiac_trigger_delay=cardiac_trigger_delay,
         fov_xy=fov_xy,
         variable_fov_coefficient=variable_fov_coefficient,
-        n_xy=n_xy,
+        n_readout=n_readout,
         slice_thickness=slice_thickness,
         rf_inv_duration=rf_inv_duration,
         rf_inv_spoil_risetime=rf_inv_spoil_risetime,
@@ -496,7 +503,7 @@ def main(
     seq.set_definition('t1prep_ti', [inversion_time, 0, 0, 0, 0])
     seq.set_definition('slice_thickness', slice_thickness)
     seq.set_definition('sampling_scheme', 'spiral')
-    seq.set_definition('number_of_readouts', int(n_xy))
+    seq.set_definition('number_of_readouts', int(n_readout))
 
     # save seq-file to disk
     output_path = Path.cwd() / 'output'
@@ -507,7 +514,7 @@ def main(
     if show_plots:
         seq.plot()
 
-    return seq
+    return seq, output_path / filename
 
 
 if __name__ == '__main__':

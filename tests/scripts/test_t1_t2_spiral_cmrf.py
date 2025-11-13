@@ -3,12 +3,12 @@
 import pytest
 from mrseq.scripts.t1_t2_spiral_cmrf import main as create_seq
 
-EXPECTED_DUR = 13.05  # defined 2025-02-22
+EXPECTED_DUR = 13.05348  # defined 2025-11-13
 
 
 def test_default_seq_duration(system_defaults):
     """Test if default values result in expected sequence duration."""
-    seq = create_seq(system=system_defaults, show_plots=False)
+    seq, _ = create_seq(system=system_defaults, show_plots=False)
     duration = seq.duration()[0]
     assert duration == pytest.approx(EXPECTED_DUR)
 
