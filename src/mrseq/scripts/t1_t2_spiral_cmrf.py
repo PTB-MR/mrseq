@@ -20,7 +20,7 @@ from mrseq.utils.vds import variable_density_spiral_trajectory
 def t1_t2_spiral_cmrf_kernel(
     system: pp.Opts,
     t2_prep_echo_times: np.ndarray,
-    tr: float,
+    tr: float | None,
     cardiac_trigger_delay: float,
     fov_xy: float,
     variable_fov_coefficient: float,
@@ -120,7 +120,7 @@ def t1_t2_spiral_cmrf_kernel(
 
     # create rf dummy pulse (required for some timing calculations)
     rf_dummy, gz_dummy, gzr_dummy = pp.make_sinc_pulse(  # type: ignore
-        flip_angle=90 / 180 * np.pi,
+        flip_angle=np.deg2rad(90),
         duration=rf_duration,
         slice_thickness=slice_thickness,
         apodization=rf_apodization,
@@ -145,13 +145,14 @@ def t1_t2_spiral_cmrf_kernel(
     delta_unique_spirals = 2 * np.pi / n_unique_spirals
     delta_array = np.arange(0, 2 * np.pi, delta_unique_spirals)
 
-    # calculate ADC
+    # create ADC event.
+    # We use one less ADC sample than the gradient waveform to make sure the ADC doesn't end at the block boundary.
     adc_dwell = system.grad_raster_time
     adc_total_samples = np.shape(g)[0] - 1
     assert adc_total_samples <= 8192, 'ADC samples exceed maximum value of 8192.'
     adc = pp.make_adc(num_samples=adc_total_samples, dwell=adc_dwell, delay=system.adc_dead_time, system=system)
 
-    # Pre-calculate the n_unique_spirals gradient waveforms, k-space trajectories, and rewinders
+    # begin of pre-calculation of the unique gradient waveforms, k-space trajectories, and rewinders
     n_points_g = np.shape(g)[0]
     n_points_k = np.shape(k)[0]
 
@@ -163,7 +164,6 @@ def t1_t2_spiral_cmrf_kernel(
     gy_rewinder_list = []
     max_rewinder_duration = 0
 
-    # iterate over all unique spirals
     for n, delta in enumerate(delta_array):
         exp_delta = np.exp(1j * delta)
         exp_delta_pi = np.exp(1j * (delta + np.pi))
@@ -213,7 +213,9 @@ def t1_t2_spiral_cmrf_kernel(
         # update maximum rewinder duration
         max_rewinder_duration = max(max_rewinder_duration, pp.calc_duration(gx_rewinder, gy_rewinder))
 
-    # gradient spoiling
+    # end of pre-calculation of the unique gradient waveforms, k-space trajectories, and rewinders
+
+    # create gradient spoiler
     gz_spoil_area = 4 / slice_thickness - gz_dummy.area / 2
     gz_spoil = pp.make_trapezoid(channel='z', area=gz_spoil_area, system=system)
 
@@ -252,7 +254,6 @@ def t1_t2_spiral_cmrf_kernel(
     print(f'\n final TR = {final_tr * 1000:.3f} ms')
 
     # create header
-    # create header
     if mrd_header_file:
         hdr = create_header(
             traj_type='other',
@@ -276,6 +277,7 @@ def t1_t2_spiral_cmrf_kernel(
     seq.add_block(pp.make_label(label='NOISE', type='SET', value=False))
     seq.add_block(pp.make_delay(system.rf_dead_time))
 
+    # add noise acquisition to ISMRMRD file
     if mrd_header_file:
         acq = ismrmrd.Acquisition()
         acq.resize(trajectory_dimensions=2, number_of_samples=adc.num_samples)
