@@ -120,7 +120,7 @@ def t1_t2_spiral_cmrf_kernel(
 
     # create rf dummy pulse (required for some timing calculations)
     rf_dummy, gz_dummy, gzr_dummy = pp.make_sinc_pulse(  # type: ignore
-        flip_angle=np.deg2rad(90),
+        flip_angle=np.pi,
         duration=rf_duration,
         slice_thickness=slice_thickness,
         apodization=rf_apodization,
