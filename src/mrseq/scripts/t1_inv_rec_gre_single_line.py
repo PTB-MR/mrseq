@@ -127,7 +127,7 @@ def t1_inv_rec_gre_single_line_kernel(
     elif te > min_te:
         te_delay = round_to_raster(te - min_te, system.block_duration_raster)
     else:
-        raise ValueError(f'TE must be larger than {min_te * 1000:.2f} ms. Current value is {te * 1000:.2f} ms.')
+        raise ValueError(f'TE must be larger than {min_te * 1000:.3f} ms. Current value is {te * 1000:.3f} ms.')
 
     print(f'\nMinimum TE: {min_te * 1000:.3f} ms')
 

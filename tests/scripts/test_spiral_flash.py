@@ -1,10 +1,10 @@
-"""Tests for radial FLASH sequence."""
+"""Tests for spiral FLASH sequence."""
 
 import numpy as np
 import pytest
-from mrseq.scripts.radial_flash import main as create_seq
+from mrseq.scripts.spiral_flash import main as create_seq
 
-EXPECTED_DUR = 0.75043  # defined 2025-10-17
+EXPECTED_DUR = 0.6996  # defined 2025-11-11
 
 
 def test_default_seq_duration(system_defaults):
@@ -17,7 +17,7 @@ def test_default_seq_duration(system_defaults):
 def test_seq_creation_error_on_short_te(system_defaults):
     """Test if error is raised on too short echo time."""
     with pytest.raises(ValueError):
-        create_seq(system=system_defaults, te=1e-3, show_plots=False)
+        create_seq(system=system_defaults, te=5e-4, show_plots=False)
 
 
 def test_seq_creation_error_on_short_tr(system_defaults):
