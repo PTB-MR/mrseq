@@ -39,7 +39,7 @@ def test_seq_predefined_echo_time(system_defaults):
 
 
 def test_seq_m2d(system_defaults):
-    """Test if sequence with predefined echo time."""
+    """Test multi-slice acquisition."""
     n_slices = 8
     seq, _ = create_seq(
         system=system_defaults,

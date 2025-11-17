@@ -92,6 +92,9 @@ def t2_t2prep_flash_kernel(
         Shortest possible echo time.
 
     """
+    if readout_oversampling < 1:
+        raise ValueError('Readout oversampling factor must be >= 1.')
+
     # create PyPulseq Sequence object and set system limits
     seq = pp.Sequence(system=system)
 
@@ -151,7 +154,7 @@ def t2_t2prep_flash_kernel(
     # calculate echo time delay (te_delay)
     te_delay = 0 if te is None else round_to_raster(te - min_te, system.block_duration_raster)
     if not te_delay >= 0:
-        raise ValueError(f'TE must be larger than {min_te * 1000:.2f} ms. Current value is {te * 1000:.2f} ms.')
+        raise ValueError(f'TE must be larger than {min_te * 1000:.3f} ms. Current value is {te * 1000:.3f} ms.')
     current_te = min_te + te_delay
 
     # calculate minimum repetition time
@@ -166,12 +169,12 @@ def t2_t2prep_flash_kernel(
     current_min_tr = min_tr + te_delay
     tr_delay = 0 if tr is None else round_to_raster(tr - current_min_tr, system.block_duration_raster)
     if not tr_delay >= 0:
-        raise ValueError(f'TR must be larger than {current_min_tr * 1000:.2f} ms. Current value is {tr * 1000:.2f} ms.')
+        raise ValueError(f'TR must be larger than {current_min_tr * 1000:.3f} ms. Current value is {tr * 1000:.3f} ms.')
     current_tr = current_min_tr + tr_delay
 
-    print(f'\nCurrent echo time = {current_te * 1000:.2f} ms')
-    print(f'Current repetition time = {current_tr * 1000:.2f} ms')
-    print(f'Acquisition window per cardiac cycle = {current_tr * len(pe_steps) * 1000:.2f} ms')
+    print(f'\nCurrent echo time = {current_te * 1000:.3f} ms')
+    print(f'Current repetition time = {current_tr * 1000:.3f} ms')
+    print(f'Acquisition window per cardiac cycle = {current_tr * len(pe_steps) * 1000:.3f} ms')
 
     # choose initial rf phase offset
     rf_phase = 0
