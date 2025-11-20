@@ -277,7 +277,7 @@ def t1_t2_spiral_cmrf_kernel(
         hint='trig_delay',
         offset=-min_cardiac_trigger_delay,
         factor=1.0,
-        default_duration=0.5 - min_cardiac_trigger_delay,
+        default_duration=0.4 - min_cardiac_trigger_delay,
     )
 
     # obtain noise samples
