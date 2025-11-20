@@ -21,7 +21,7 @@ def t1_t2_spiral_cmrf_kernel(
     system: pp.Opts,
     t2_prep_echo_times: np.ndarray,
     tr: float | None,
-    cardiac_trigger_delay: float,
+    min_cardiac_trigger_delay: float,
     fov_xy: float,
     variable_fov_coefficient: float,
     n_readout: int,
@@ -44,8 +44,9 @@ def t1_t2_spiral_cmrf_kernel(
         Array of three T2prep echo times (in seconds).
     tr
         Desired repetition time (TR) (in seconds).
-    cardiac_trigger_delay
-        Delay after cardiac trigger (in seconds).
+    min_cardiac_trigger_delay
+        Minimum delay after cardiac trigger (in seconds).
+        The total trigger delay is implemented as a soft delay and can be chosen by the user in the UI.
     fov_xy
         Field of view in x and y direction (in meters).
     variable_fov_coefficient
@@ -271,6 +272,14 @@ def t1_t2_spiral_cmrf_kernel(
         prot = ismrmrd.Dataset(mrd_header_file, 'w')
         prot.write_xml_header(hdr.toXML('utf-8'))
 
+    # create trigger soft delay (total duration: user_input/1.0 - min_cardiac_trigger_delay)
+    trig_soft_delay = pp.make_soft_delay(
+        hint='trig_delay',
+        offset=-min_cardiac_trigger_delay,
+        factor=1.0,
+        default_duration=0.5 - min_cardiac_trigger_delay,
+    )
+
     # obtain noise samples
     seq.add_block(pp.make_label(label='LIN', type='SET', value=0), pp.make_label(label='SLC', type='SET', value=0))
     seq.add_block(adc, pp.make_label(label='NOISE', type='SET', value=True))
@@ -300,10 +309,13 @@ def t1_t2_spiral_cmrf_kernel(
                 spoiler_flat_time=rf_inv_spoil_flattime,
                 system=system,
             )
-            current_trig_delay = cardiac_trigger_delay - prep_dur
+            constant_trig_delay = min_cardiac_trigger_delay - prep_dur
 
-            # add trigger
-            seq.add_block(pp.make_trigger(channel='physio1', duration=current_trig_delay))
+            # add trigger and constant part of trigger delay
+            seq.add_block(pp.make_trigger(channel='physio1', duration=constant_trig_delay))
+
+            # add variable part of trigger delay (soft delay)
+            seq.add_block(trig_soft_delay)
 
             # add all events of T1prep block
             for idx in t1prep_block.block_events:
@@ -311,8 +323,9 @@ def t1_t2_spiral_cmrf_kernel(
 
         # add no preparation for every block following an inversion block
         elif block % 5 == 1:
-            # add trigger with chosen trigger delay
-            seq.add_block(pp.make_trigger(channel='physio1', duration=cardiac_trigger_delay))
+            # add trigger and trigger delay(s)
+            seq.add_block(pp.make_trigger(channel='physio1', duration=min_cardiac_trigger_delay))
+            seq.add_block(trig_soft_delay)
 
         # add T2prep for every other block
         else:
@@ -321,10 +334,13 @@ def t1_t2_spiral_cmrf_kernel(
 
             # get prep block duration and calculate corresponding trigger delay
             t2prep_block, prep_dur = add_t2_prep(echo_time=echo_time, system=system)
-            current_trig_delay = cardiac_trigger_delay - prep_dur
+            constant_trig_delay = min_cardiac_trigger_delay - prep_dur
 
-            # add trigger
-            seq.add_block(pp.make_trigger(channel='physio1', duration=current_trig_delay))
+            # add trigger and constant part of trigger delay
+            seq.add_block(pp.make_trigger(channel='physio1', duration=constant_trig_delay))
+
+            # add variable part of trigger delay (soft delay)
+            seq.add_block(trig_soft_delay)
 
             # add all events of T2prep block
             for idx in t2prep_block.block_events:
@@ -400,7 +416,7 @@ def main(
     system: pp.Opts | None = None,
     t2_prep_echo_times: np.ndarray | None = None,
     tr: float = 10e-3,
-    cardiac_trigger_delay: float = 0.4,
+    min_cardiac_trigger_delay: float = 0.2,
     fov_xy: float = 128e-3,
     variable_fov_coefficient: float = -0.75,
     n_readout: int = 128,
@@ -419,8 +435,8 @@ def main(
         Array of three T2prep echo times (in seconds). Default: [0.03, 0.05, 0.1] s if set to None.
     tr
         Desired repetition time (TR) (in seconds).
-    cardiac_trigger_delay
-        Delay after cardiac trigger (in seconds).
+    min_cardiac_trigger_delay
+        Minimum delay after cardiac trigger (in seconds).
     fov_xy
         Field of view in x and y direction (in meters).
     variable_fov_coefficient
@@ -453,8 +469,7 @@ def main(
     rf_apodization = 0.5  # apodization factor of rf excitation pulse
 
     # define sequence filename
-    filename = f'{Path(__file__).stem}_{fov_xy * 1000:.0f}fov_{n_readout}px_'
-    filename += f'trig{int(cardiac_trigger_delay * 1000)}ms'
+    filename = f'{Path(__file__).stem}_{fov_xy * 1000:.0f}fov_{n_readout}px_variable_trig_delay'
 
     output_path = Path.cwd() / 'output'
     output_path.mkdir(parents=True, exist_ok=True)
@@ -467,7 +482,7 @@ def main(
         system=system,
         t2_prep_echo_times=t2_prep_echo_times,
         tr=tr,
-        cardiac_trigger_delay=cardiac_trigger_delay,
+        min_cardiac_trigger_delay=min_cardiac_trigger_delay,
         fov_xy=fov_xy,
         variable_fov_coefficient=variable_fov_coefficient,
         n_readout=n_readout,
