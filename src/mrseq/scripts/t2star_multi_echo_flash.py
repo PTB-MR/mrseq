@@ -10,6 +10,9 @@ from mrseq.utils import find_gx_flat_time_on_adc_raster
 from mrseq.utils import round_to_raster
 from mrseq.utils import sys_defaults
 from mrseq.utils.create_ismrmrd_header import create_header
+from mrseq.utils.ismrmrd import Fov
+from mrseq.utils.ismrmrd import Limits
+from mrseq.utils.ismrmrd import MatrixSize
 from mrseq.utils.trajectory import MultiEchoAcquisition
 from mrseq.utils.trajectory import cartesian_phase_encoding
 
@@ -20,7 +23,6 @@ def t2star_multi_echo_flash_kernel(
     delta_te: float | None,
     tr: float | None,
     n_echoes: int,
-    n_recovery_cardiac_cycles: int,
     cardiac_trigger_delay: float,
     fov_xy: float,
     n_readout: int,
@@ -55,8 +57,6 @@ def t2star_multi_echo_flash_kernel(
         Desired repetition time (TR) (in seconds).
     n_echoes
         Number of echoes.
-    n_recovery_cardiac_cycles
-        Number of cardiac cycles for magnetization recovery after each T2-pepared acquisition.
     cardiac_trigger_delay
         Delay after cardiac trigger (in seconds).
     fov_xy
@@ -194,12 +194,15 @@ def t2star_multi_echo_flash_kernel(
     # create header
     if mrd_header_file:
         hdr = create_header(
-            traj_type='cartesian',
-            fov=fov_xy,
-            res=fov_xy / n_readout,
-            slice_thickness=slice_thickness,
-            dt=multi_echo_gradient._adc.dwell,
-            n_k1=len(pe_steps),
+            traj_type='other',
+            encoding_fov=Fov(x=fov_xy, y=fov_xy, z=slice_thickness),
+            recon_fov=Fov(x=fov_xy, y=fov_xy, z=slice_thickness),
+            encoding_matrix=MatrixSize(n_x=int(n_readout), n_y=int(n_readout), n_z=1),
+            recon_matrix=MatrixSize(n_x=n_readout, n_y=n_readout, n_z=1),
+            dwell_time=multi_echo_gradient._adc.dwell,
+            k1_limits=Limits(min=0, max=len(pe_steps), center=0),
+            k2_limits=Limits(),
+            slice_limits=Limits(),
         )
 
         # write header to file
@@ -360,8 +363,6 @@ def main(
     if partial_echo_factor > 1 or partial_echo_factor < 0.5:
         raise ValueError('Partial echo factor has to be within 0.5 and 1')
 
-    n_recovery_cardiac_cycles = 3
-
     # define settings of rf excitation pulse
     rf_duration = 1.28e-3  # duration of the rf excitation pulse [s]
     rf_flip_angle = 12  # flip angle of rf excitation pulse [°]
@@ -385,7 +386,9 @@ def main(
 
     # define sequence filename
     filename = f'{Path(__file__).stem}_{int(fov_xy * 1000)}fov_{n_readout}nx_{acceleration}us_'
-    filename += f'trig{int(cardiac_trigger_delay * 1000)}ms'
+    filename += (
+        f'trig{int(cardiac_trigger_delay * 1000)}ms_{int(n_pe_points_per_cardiac_cycle)}ppcc_{partial_echo_factor}pe'
+    )
 
     output_path = Path.cwd() / 'output'
     output_path.mkdir(parents=True, exist_ok=True)
@@ -396,7 +399,6 @@ def main(
         delta_te=delta_te,
         tr=tr,
         n_echoes=n_echoes,
-        n_recovery_cardiac_cycles=n_recovery_cardiac_cycles,
         cardiac_trigger_delay=cardiac_trigger_delay,
         fov_xy=fov_xy,
         n_readout=n_readout,
