@@ -9,10 +9,10 @@ import pypulseq as pp
 from mrseq.utils import find_gx_flat_time_on_adc_raster
 from mrseq.utils import round_to_raster
 from mrseq.utils import sys_defaults
-from mrseq.utils.create_ismrmrd_header import create_header
 from mrseq.utils.ismrmrd import Fov
 from mrseq.utils.ismrmrd import Limits
 from mrseq.utils.ismrmrd import MatrixSize
+from mrseq.utils.ismrmrd import create_header
 from mrseq.utils.trajectory import MultiEchoAcquisition
 from mrseq.utils.trajectory import cartesian_phase_encoding
 
@@ -104,6 +104,8 @@ def t2star_multi_echo_flash_kernel(
         Shortest possible echo time.
     min_tr
         Shortest possible echo time.
+    delta_te
+        Time between echoes.
 
     """
     if readout_oversampling < 1:
@@ -150,11 +152,9 @@ def t2star_multi_echo_flash_kernel(
 
     # calculate minimum echo time
     if te is None:
-        gzr_gx_dur = pp.calc_duration(gzr, multi_echo_gradient._gx_pre)  # gzr and gx_pre are applied simultaneously
+        gzr_gx_dur = pp.calc_duration(gzr, gx_pre_duration)  # gzr and gx_pre/gy_pre are applied simultaneously
     else:
-        gzr_gx_dur = pp.calc_duration(gzr) + pp.calc_duration(
-            multi_echo_gradient._gx_pre
-        )  # gzr and gx_pre are applied sequentially
+        gzr_gx_dur = pp.calc_duration(gzr) + gx_pre_duration  # gzr and gx_pre/gy_pre are applied sequentially
 
     min_te = (
         rf.shape_dur / 2  # time from center to end of RF pulse
@@ -197,7 +197,7 @@ def t2star_multi_echo_flash_kernel(
             traj_type='other',
             encoding_fov=Fov(x=fov_xy, y=fov_xy, z=slice_thickness),
             recon_fov=Fov(x=fov_xy, y=fov_xy, z=slice_thickness),
-            encoding_matrix=MatrixSize(n_x=int(n_readout), n_y=int(n_readout), n_z=1),
+            encoding_matrix=MatrixSize(n_x=int(n_readout * readout_oversampling), n_y=n_readout, n_z=1),
             recon_matrix=MatrixSize(n_x=n_readout, n_y=n_readout, n_z=1),
             dwell_time=multi_echo_gradient._adc.dwell,
             k1_limits=Limits(min=0, max=len(pe_steps), center=0),
@@ -264,7 +264,7 @@ def t2star_multi_echo_flash_kernel(
                 seq.add_block(multi_echo_gradient._gx_pre, gy_pre, gzr, *labels)
 
             # add readout gradients and ADCs
-            seq, _ = multi_echo_gradient.add_to_seq_without_pre_post_gradient(seq, n_echoes)
+            seq, time_to_echoes = multi_echo_gradient.add_to_seq_without_pre_post_gradient(seq, n_echoes)
 
             gy_pre.amplitude = -gy_pre.amplitude
             seq.add_block(multi_echo_gradient._gx_post, gy_pre, gz_spoil)
@@ -296,7 +296,7 @@ def t2star_multi_echo_flash_kernel(
     if mrd_header_file:
         prot.close()
 
-    return seq, min_te, min_tr
+    return seq, min_te, min_tr, np.diff(time_to_echoes)
 
 
 def main(
@@ -368,7 +368,7 @@ def main(
     rf_flip_angle = 12  # flip angle of rf excitation pulse [°]
     rf_bwt = 4  # bandwidth-time product of rf excitation pulse [Hz*s]
     rf_apodization = 0.5  # apodization factor of rf excitation pulse
-    readout_oversampling = 1  # readout oversampling factor, commonly 2. This reduces aliasing artifacts.
+    readout_oversampling = 2  # readout oversampling factor, commonly 2. This reduces aliasing artifacts.
 
     # this is just approximately, the final calculation is done in the kernel
     n_readout_with_oversampling = int(n_readout * readout_oversampling * partial_echo_factor)
@@ -386,14 +386,13 @@ def main(
 
     # define sequence filename
     filename = f'{Path(__file__).stem}_{int(fov_xy * 1000)}fov_{n_readout}nx_{acceleration}us_'
-    filename += (
-        f'trig{int(cardiac_trigger_delay * 1000)}ms_{int(n_pe_points_per_cardiac_cycle)}ppcc_{partial_echo_factor}pe'
-    )
+    filename += f'trig{int(cardiac_trigger_delay * 1000)}ms_{int(n_pe_points_per_cardiac_cycle)}ppcc_'
+    filename += f'{partial_echo_factor}pe'.replace('.', '-')
 
     output_path = Path.cwd() / 'output'
     output_path.mkdir(parents=True, exist_ok=True)
 
-    seq, min_te, min_tr = t2star_multi_echo_flash_kernel(
+    seq, min_te, min_tr, delta_te = t2star_multi_echo_flash_kernel(
         system=system,
         te=te,
         delta_te=delta_te,
@@ -438,7 +437,11 @@ def main(
     seq.set_definition('FOV', [fov_xy, fov_xy, slice_thickness])
     seq.set_definition('ReconMatrix', (n_readout, n_readout, 1))
     seq.set_definition('SliceThickness', slice_thickness)
-    seq.set_definition('TE', te or min_te)
+    if te:
+        echo_times = te + np.cumsum(np.concatenate((np.zeros(1), delta_te)))
+    else:
+        echo_times = min_te + np.cumsum(np.concatenate((np.zeros(1), delta_te)))
+    seq.set_definition('TE', [te.item() for te in echo_times])
     seq.set_definition('TR', tr or min_tr)
     seq.set_definition('ReadoutOversamplingFactor', readout_oversampling)
 
