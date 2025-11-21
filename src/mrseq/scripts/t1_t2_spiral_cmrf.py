@@ -9,12 +9,12 @@ import pypulseq as pp
 from mrseq.preparations import add_t1_inv_prep
 from mrseq.preparations import add_t2_prep
 from mrseq.utils import round_to_raster
+from mrseq.utils import spiral_acquisition
 from mrseq.utils import sys_defaults
 from mrseq.utils.ismrmrd import Fov
 from mrseq.utils.ismrmrd import Limits
 from mrseq.utils.ismrmrd import MatrixSize
 from mrseq.utils.ismrmrd import create_header
-from mrseq.utils.vds import variable_density_spiral_trajectory
 
 
 def t1_t2_spiral_cmrf_kernel(
@@ -23,8 +23,9 @@ def t1_t2_spiral_cmrf_kernel(
     tr: float | None,
     min_cardiac_trigger_delay: float,
     fov_xy: float,
-    variable_fov_coefficient: float,
     n_readout: int,
+    readout_oversampling: int,
+    spiral_undersampling: int,
     slice_thickness: float,
     rf_inv_duration: float,
     rf_inv_spoil_risetime: float,
@@ -49,10 +50,12 @@ def t1_t2_spiral_cmrf_kernel(
         The total trigger delay is implemented as a soft delay and can be chosen by the user in the UI.
     fov_xy
         Field of view in x and y direction (in meters).
-    variable_fov_coefficient
-        Coefficient for variable density spiral trajectory.
     n_readout
         Number of readout points.
+    readout_oversampling
+
+    spiral_undersampling
+        Undersampling in the periphery of the variable density spiral.
     slice_thickness
         Slice thickness of the 2D slice (in meters).
     rf_inv_duration
@@ -80,6 +83,9 @@ def t1_t2_spiral_cmrf_kernel(
         Shortest possible echo time.
 
     """
+    if readout_oversampling < 1:
+        raise ValueError('Readout oversampling factor must be >= 1.')
+
     # create PyPulseq Sequence object and set system limits
     seq = pp.Sequence(system=system)
 
@@ -88,18 +94,7 @@ def t1_t2_spiral_cmrf_kernel(
 
     # cMRF specific settings
     n_blocks = 15  # number of heartbeat blocks
-    n_unique_spirals = 48  # number of unique spiral interleaves
     minimum_time_to_set_label = 1e-5  # minimum time to set a label (in seconds)
-
-    # define VDS readout parameters
-    if (fov_xy == 200e-3 and n_readout == 128) or (fov_xy == 128e-3 and n_readout == 128):
-        n_spirals_for_traj_calc = 16
-    elif fov_xy == 300e-3 and n_readout == 192:
-        n_spirals_for_traj_calc = 24
-    else:
-        print('Please double check the number of spirals for trajectory calculation.')
-    # FOV decreases linearly from fov_coefficients[0] to fov_coefficients[0]-fov_coefficients[1].
-    fov_coefficients = [fov_xy, variable_fov_coefficient * fov_xy]
 
     # create flip angle pattern
     max_flip_angles_deg = [12.5, 18.75, 25, 25, 25, 12.5, 18.75, 25, 25.0, 25, 12.5, 18.75, 25, 25, 25]
@@ -132,109 +127,35 @@ def t1_t2_spiral_cmrf_kernel(
         use='excitation',
     )
 
-    # calculate variable density spiral (VDS) trajectory
-    max_kspace_radius = 0.5 / fov_xy * n_readout
-    k, g, _, _, _, _ = variable_density_spiral_trajectory(
-        system=system,
-        sampling_period=system.grad_raster_time,
-        n_interleaves=n_spirals_for_traj_calc,
-        fov_coefficients=fov_coefficients,
-        max_kspace_radius=max_kspace_radius,
+    # create readout gradient and ADC
+    gx, gy, adc, trajectory, time_to_echo = spiral_acquisition(
+        system,
+        n_readout,
+        fov_xy,
+        spiral_undersampling,
+        readout_oversampling,
+        n_spirals=None,
+        max_pre_duration=0.0,
+        spiral_type='out',
     )
-
-    # calculate angular increment
-    delta_unique_spirals = 2 * np.pi / n_unique_spirals
-    delta_array = np.arange(0, 2 * np.pi, delta_unique_spirals)
-
-    # create ADC event.
-    # We use one less ADC sample than the gradient waveform to make sure the ADC doesn't end at the block boundary.
-    adc_dwell = system.grad_raster_time
-    adc_total_samples = np.shape(g)[0] - 1
-    assert adc_total_samples <= 8192, 'ADC samples exceed maximum value of 8192.'
-    adc = pp.make_adc(num_samples=adc_total_samples, dwell=adc_dwell, delay=system.adc_dead_time, system=system)
-
-    # begin of pre-calculation of the unique gradient waveforms, k-space trajectories, and rewinders
-    n_points_g = np.shape(g)[0]
-    n_points_k = np.shape(k)[0]
-
-    spiral_readout_grad = np.zeros((n_unique_spirals, 2, n_points_g))
-    spiral_trajectory = np.zeros((n_unique_spirals, 2, n_points_k))
-    gx_readout_list = []
-    gy_readout_list = []
-    gx_rewinder_list = []
-    gy_rewinder_list = []
-    max_rewinder_duration = 0
-
-    for n, delta in enumerate(delta_array):
-        exp_delta = np.exp(1j * delta)
-        exp_delta_pi = np.exp(1j * (delta + np.pi))
-
-        spiral_readout_grad[n, 0, :] = np.real(g * exp_delta)
-        spiral_readout_grad[n, 1, :] = np.imag(g * exp_delta)
-        spiral_trajectory[n, 0, :] = np.real(k * exp_delta_pi)
-        spiral_trajectory[n, 1, :] = np.imag(k * exp_delta_pi)
-
-        gx_readout = pp.make_arbitrary_grad(
-            channel='x',
-            waveform=spiral_readout_grad[n, 0],
-            first=0,
-            delay=adc.delay,
-            system=system,
-        )
-
-        gy_readout = pp.make_arbitrary_grad(
-            channel='y',
-            waveform=spiral_readout_grad[n, 1],
-            first=0,
-            delay=adc.delay,
-            system=system,
-        )
-
-        gx_rewinder, _, _ = pp.make_extended_trapezoid_area(
-            area=-gx_readout.area,
-            channel='x',
-            grad_start=gx_readout.last,
-            grad_end=0,
-            system=system,
-        )
-
-        gy_rewinder, _, _ = pp.make_extended_trapezoid_area(
-            area=-gy_readout.area,
-            channel='y',
-            grad_start=gy_readout.last,
-            grad_end=0,
-            system=system,
-        )
-
-        gx_readout_list.append(gx_readout)
-        gy_readout_list.append(gy_readout)
-        gx_rewinder_list.append(gx_rewinder)
-        gy_rewinder_list.append(gy_rewinder)
-
-        # update maximum rewinder duration
-        max_rewinder_duration = max(max_rewinder_duration, pp.calc_duration(gx_rewinder, gy_rewinder))
-
-    # end of pre-calculation of the unique gradient waveforms, k-space trajectories, and rewinders
+    delta_array = 2 * np.pi / len(gx) * np.arange(len(gx))  # angle difference between subsequent spirals
 
     # create gradient spoiler
     gz_spoil_area = 4 / slice_thickness - gz_dummy.area / 2
     gz_spoil = pp.make_trapezoid(channel='z', area=gz_spoil_area, system=system)
 
-    # update maximum rewinder duration including spoiling gradient
-    max_rewinder_duration = max(max_rewinder_duration, pp.calc_duration(gz_spoil))
-
     # calculate minimum echo time (TE) for sequence header
-    min_te = pp.calc_duration(gz_dummy) / 2 + pp.calc_duration(gzr_dummy) + adc.delay
+    min_te = pp.calc_duration(gz_dummy) / 2 + pp.calc_duration(gzr_dummy) + time_to_echo
     min_te = round_to_raster(min_te, system.grad_raster_time).item()
 
     # calculate minimum repetition time (TR)
     min_tr = (
         pp.calc_duration(rf_dummy, gz_dummy)  # rf pulse
         + pp.calc_duration(gzr_dummy)  # slice selection re-phasing gradient
-        + pp.calc_duration(gx_readout_list[0])  # readout
-        + max_rewinder_duration  # max of rewinder gradients / gz_spoil durations
+        + pp.calc_duration(gx[0])  # readout
+        + pp.calc_duration(gz_spoil)  # gz_spoil durations
         + minimum_time_to_set_label  # min time to set labels
-    ).item()
+    )
 
     # ensure minimum TR is on gradient raster
     min_tr = round_to_raster(min_tr, system.grad_raster_time)
@@ -264,7 +185,7 @@ def t1_t2_spiral_cmrf_kernel(
             recon_matrix=MatrixSize(n_x=n_readout, n_y=n_readout, n_z=1),
             dwell_time=adc.dwell,
             slice_limits=Limits(min=0, max=1, center=0),
-            k1_limits=Limits(min=0, max=len(gx_readout_list), center=0),
+            k1_limits=Limits(min=0, max=len(gx), center=0),
             k2_limits=Limits(min=0, max=1, center=0),
         )
 
@@ -277,7 +198,7 @@ def t1_t2_spiral_cmrf_kernel(
         hint='trig_delay',
         offset=-min_cardiac_trigger_delay,
         factor=1.0,
-        default_duration=0.4 - min_cardiac_trigger_delay,
+        default_duration=0.5 - min_cardiac_trigger_delay,
     )
 
     # obtain noise samples
@@ -356,7 +277,7 @@ def t1_t2_spiral_cmrf_kernel(
 
             # find closest unique spiral to current golden angle rotation
             diff = np.abs(delta_array - golden_angle)
-            idx = np.argmin(diff)
+            spiral_idx = np.argmin(diff)
 
             # create slice selective rf pulse for current shot
             rf_n, gz_n, gzr_n = pp.make_sinc_pulse(  # type: ignore
@@ -378,28 +299,25 @@ def t1_t2_spiral_cmrf_kernel(
             seq.add_block(gzr_n)
 
             # add readout gradients and ADC
-            seq.add_block(gx_readout_list[idx], gy_readout_list[idx], adc)
+            seq.add_block(gx[spiral_idx], gy[spiral_idx], adc)
 
-            # add rewinder gradients and spoiler
-            gx_rewinder = gx_rewinder_list[idx]
-            gy_rewinder = gy_rewinder_list[idx]
-            seq.add_block(gx_rewinder, gy_rewinder, gz_spoil)
-
-            # calculate rewinder delay for current shot
-            current_rewinder_duration = max(pp.calc_duration(gx_rewinder), pp.calc_duration(gy_rewinder))
-            rewinder_delay = max_rewinder_duration - current_rewinder_duration
+            # add spoiler
+            seq.add_block(gz_spoil)
 
             # add TR delay and LIN label
-            seq.add_block(pp.make_delay(rewinder_delay + tr_delay), pp.make_label(label='LIN', type='INC', value=1))
+            seq.add_block(pp.make_delay(tr_delay), pp.make_label(label='LIN', type='INC', value=1))
 
             if mrd_header_file:
-                # add trajectory to ISMRMRD header
+                # add acquisitions to metadata
+                spiral_trajectory = np.zeros((trajectory.shape[1], 2), dtype=np.float32)
+
+                # the spiral trajectory is calculated in units of delta_k. for image reconstruction we use delta_k = 1
+                spiral_trajectory[:, 0] = trajectory[spiral_idx, :, 0] * fov_xy
+                spiral_trajectory[:, 1] = trajectory[spiral_idx, :, 1] * fov_xy
+
                 acq = ismrmrd.Acquisition()
                 acq.resize(trajectory_dimensions=2, number_of_samples=adc.num_samples)
-                traj_ismrmrd = np.stack(
-                    [spiral_trajectory[idx, 0, 0:-1] * fov_xy, spiral_trajectory[idx, 1, 0:-1] * fov_xy]
-                ).T
-                acq.traj[:] = traj_ismrmrd
+                acq.traj[:] = spiral_trajectory
                 prot.append_acquisition(acq)
 
             # increment repetition counter
@@ -418,7 +336,7 @@ def main(
     tr: float = 10e-3,
     min_cardiac_trigger_delay: float = 0.2,
     fov_xy: float = 128e-3,
-    variable_fov_coefficient: float = -0.75,
+    spiral_undersampling: int = 6,
     n_readout: int = 128,
     slice_thickness: float = 8e-3,
     show_plots: bool = True,
@@ -439,8 +357,8 @@ def main(
         Minimum delay after cardiac trigger (in seconds).
     fov_xy
         Field of view in x and y direction (in meters).
-    variable_fov_coefficient
-        Coefficient for variable density spiral trajectory.
+    spiral_undersampling
+        Undersampling factor in the periphery of the variable density spiral.
     n_readout
         Number of readout points.
     slice_thickness
@@ -467,6 +385,7 @@ def main(
     rf_duration = 0.8e-3  # duration of the rf excitation pulse [s]
     rf_bwt = 8  # bandwidth-time product of rf excitation pulse [Hz*s]
     rf_apodization = 0.5  # apodization factor of rf excitation pulse
+    readout_oversampling = 2
 
     # define sequence filename
     filename = f'{Path(__file__).stem}_{fov_xy * 1000:.0f}fov_{n_readout}px_variable_trig_delay'
@@ -484,8 +403,9 @@ def main(
         tr=tr,
         min_cardiac_trigger_delay=min_cardiac_trigger_delay,
         fov_xy=fov_xy,
-        variable_fov_coefficient=variable_fov_coefficient,
         n_readout=n_readout,
+        readout_oversampling=readout_oversampling,
+        spiral_undersampling=spiral_undersampling,
         slice_thickness=slice_thickness,
         rf_inv_duration=rf_inv_duration,
         rf_inv_spoil_risetime=rf_inv_spoil_risetime,
