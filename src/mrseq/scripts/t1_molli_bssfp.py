@@ -336,7 +336,7 @@ def main(
         system = sys_defaults
 
     if inversion_times is None:
-        inversion_times = [0.1, 0.3]
+        inversion_times = [0.1, 0.15]
 
     # define settings of rf excitation pulse
     rf_duration = 0.5e-3  # duration of the rf excitation pulse [s]
