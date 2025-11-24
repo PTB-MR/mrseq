@@ -23,7 +23,7 @@ def t2star_multi_echo_flash_kernel(
     delta_te: float | None,
     tr: float | None,
     n_echoes: int,
-    cardiac_trigger_delay: float,
+    min_cardiac_trigger_delay: float,
     fov_xy: float,
     n_readout: int,
     readout_oversampling: float,
@@ -57,8 +57,9 @@ def t2star_multi_echo_flash_kernel(
         Desired repetition time (TR) (in seconds).
     n_echoes
         Number of echoes.
-    cardiac_trigger_delay
-        Delay after cardiac trigger (in seconds).
+    min_cardiac_trigger_delay
+        Minimum delay after cardiac trigger (in seconds).
+        The total trigger delay is implemented as a soft delay and can be chosen by the user in the UI.
     fov_xy
         Field of view in x and y direction (in meters).
     n_readout
@@ -209,6 +210,19 @@ def t2star_multi_echo_flash_kernel(
         prot = ismrmrd.Dataset(mrd_header_file, 'w')
         prot.write_xml_header(hdr.toXML('utf-8'))
 
+    # create trigger soft delay (total duration: user_input/1.0 - min_cardiac_trigger_delay)
+    trig_soft_delay = pp.make_soft_delay(
+        hint='trig_delay',
+        offset=-min_cardiac_trigger_delay,
+        factor=1.0,
+        default_duration=0.4 - min_cardiac_trigger_delay,
+    )
+    constant_trig_delay = round_to_raster(
+        min_cardiac_trigger_delay - current_te / 2, raster_time=system.block_duration_raster
+    )
+    if constant_trig_delay < 0:
+        raise ValueError('Minimum trigger delay is too short for this echo time.')
+
     # obtain noise samples
     seq.add_block(pp.make_label(label='LIN', type='SET', value=0), pp.make_label(label='SLC', type='SET', value=0))
     seq.add_block(multi_echo_gradient._adc, pp.make_label(label='NOISE', type='SET', value=True))
@@ -225,14 +239,11 @@ def t2star_multi_echo_flash_kernel(
     rf_inc = 0
 
     for cardiac_cycle_idx in range(len(pe_steps) // n_pe_points_per_cardiac_cycle):
-        seq.add_block(
-            pp.make_trigger(
-                channel='physio1',
-                duration=round_to_raster(
-                    cardiac_trigger_delay - current_te / 2, raster_time=system.block_duration_raster
-                ),
-            )
-        )
+        # add trigger and constant part of trigger delay
+        seq.add_block(pp.make_trigger(channel='physio1', duration=constant_trig_delay))
+
+        # add variable part of trigger delay (soft delay)
+        seq.add_block(trig_soft_delay)
 
         for shot_idx in range(n_pe_points_per_cardiac_cycle):
             pe_index = pe_steps[shot_idx + n_pe_points_per_cardiac_cycle * cardiac_cycle_idx]
@@ -305,7 +316,6 @@ def main(
     delta_te: float | None = None,
     tr: float | None = None,
     n_echoes: int = 3,
-    cardiac_trigger_delay: float = 0.4,
     fov_xy: float = 128e-3,
     n_readout: int = 128,
     partial_echo_factor: float = 0.7,
@@ -332,8 +342,6 @@ def main(
         Desired repetition time (TR) (in seconds). Minimum repetition time is used if set to None.
     n_echoes
         Number of echoes.
-    cardiac_trigger_delay
-        Delay after cardiac trigger (in seconds).
     fov_xy
         Field of view in x and y direction (in meters).
     n_readout
@@ -386,7 +394,6 @@ def main(
 
     # define sequence filename
     filename = f'{Path(__file__).stem}_{int(fov_xy * 1000)}fov_{n_readout}nx_{acceleration}us_'
-    filename += f'trig{int(cardiac_trigger_delay * 1000)}ms_{int(n_pe_points_per_cardiac_cycle)}ppcc_'
     filename += f'{partial_echo_factor}pe'.replace('.', '-')
 
     output_path = Path.cwd() / 'output'
@@ -398,7 +405,7 @@ def main(
         delta_te=delta_te,
         tr=tr,
         n_echoes=n_echoes,
-        cardiac_trigger_delay=cardiac_trigger_delay,
+        min_cardiac_trigger_delay=0.1,  # has to be smaller than half the echo time
         fov_xy=fov_xy,
         n_readout=n_readout,
         partial_echo_factor=partial_echo_factor,
