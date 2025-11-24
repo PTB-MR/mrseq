@@ -356,7 +356,7 @@ def main(
         system = sys_defaults
 
     if inversion_times is None:
-        inversion_times = [0.1, 0.18]
+        inversion_times = np.asarray([0.1, 0.18])
 
     # define settings of rf excitation pulse
     rf_duration = 0.5e-3  # duration of the rf excitation pulse [s]
@@ -388,7 +388,8 @@ def main(
         te=te,
         tr=tr,
         inversion_times=inversion_times,
-        min_cardiac_trigger_delay=max(inversion_times) + 0.02,  # max inversion time + approx inversion pulse duration
+        min_cardiac_trigger_delay=np.max(inversion_times)
+        + 0.02,  # max inversion time + approx inversion pulse duration
         fov_xy=fov_xy,
         n_readout=n_readout,
         readout_oversampling=readout_oversampling,
@@ -424,7 +425,7 @@ def main(
     seq.set_definition('SliceThickness', slice_thickness)
     seq.set_definition('TE', te or min_te)
     seq.set_definition('TR', tr or min_tr)
-    seq.set_definition('TI', inversion_times)
+    seq.set_definition('TI', inversion_times.tolist())
     seq.set_definition('ReadoutOversamplingFactor', readout_oversampling)
 
     # save seq-file to disk
