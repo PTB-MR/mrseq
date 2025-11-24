@@ -1,4 +1,4 @@
-"""2D Cartesian MOLLI with bSSFP mapping."""
+"""2D Cartesian MOLLI with bSSFP mapping for cardiac T1 mapping."""
 
 from pathlib import Path
 
@@ -32,7 +32,7 @@ def t1_molli_bssfp_kernel(
     rf_bwt: float,
     rf_apodization: float,
 ) -> tuple[pp.Sequence, float, float]:
-    """Generate a 5(3)3 MOLLI sequence with bSSFP readout.
+    """Generate a 5(3)3 MOLLI sequence with bSSFP readout for cardiac T1 mapping.
 
     Parameters
     ----------
@@ -41,9 +41,9 @@ def t1_molli_bssfp_kernel(
     te
         Desired echo time (TE) (in seconds). Minimum echo time is used if set to None.
     tr
-        Desired repetition time (TR) (in seconds).
+        Desired repetition time (TR) (in seconds). Minimum repetition time is used if set to None.
     inversion_times
-        First inversion times for both acquisition blocks. If None, default values of [100, 180]ms are used.
+        First inversion times for both acquisition blocks (in seconds).
     cardiac_trigger_delay
         Delay after cardiac trigger (in seconds).
     fov_xy
@@ -299,7 +299,7 @@ def main(
     test_report: bool = True,
     timing_check: bool = True,
 ) -> pp.Sequence:
-    """Generate a 5(3)3 MOLLI sequence with bSSFP readout.
+    """Generate a 5(3)3 MOLLI sequence with bSSFP readout for cardiac T1 mapping.
 
     Parameters
     ----------
@@ -310,7 +310,8 @@ def main(
     tr
         Desired repetition time (TR) (in seconds). Minimum repetition time is used if set to None.
     inversion_times
-        First inversion times for both acquisition blocks. If None, default values of [100, 180]ms are used.
+        First inversion times for both acquisition blocks (in seconds).
+        If None, default values of [100, 180]ms are used.
     cardiac_trigger_delay
         Delay after cardiac trigger (in seconds).
     fov_xy
@@ -336,7 +337,7 @@ def main(
         system = sys_defaults
 
     if inversion_times is None:
-        inversion_times = [0.1, 0.15]
+        inversion_times = [0.1, 0.18]
 
     # define settings of rf excitation pulse
     rf_duration = 0.5e-3  # duration of the rf excitation pulse [s]
