@@ -53,7 +53,7 @@ def t1_t2_spiral_cmrf_kernel(
     n_readout
         Number of readout points.
     readout_oversampling
-
+        Readout oversampling. Determines the number of ADC samples along a spiral and the bandwidth.
     spiral_undersampling
         Undersampling in the periphery of the variable density spiral.
     slice_thickness
@@ -334,7 +334,6 @@ def main(
     system: pp.Opts | None = None,
     t2_prep_echo_times: np.ndarray | None = None,
     tr: float = 10e-3,
-    min_cardiac_trigger_delay: float = 0.2,
     fov_xy: float = 128e-3,
     spiral_undersampling: int = 6,
     n_readout: int = 128,
@@ -401,7 +400,7 @@ def main(
         system=system,
         t2_prep_echo_times=t2_prep_echo_times,
         tr=tr,
-        min_cardiac_trigger_delay=min_cardiac_trigger_delay,
+        min_cardiac_trigger_delay=np.max(t2_prep_echo_times) + 0.05,  # max T2prep echo time and buffer for spoiler
         fov_xy=fov_xy,
         n_readout=n_readout,
         readout_oversampling=readout_oversampling,
