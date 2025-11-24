@@ -18,7 +18,7 @@ def t2_t2prep_flash_kernel(
     tr: float | None,
     t2_prep_echo_times: np.ndarray,
     n_recovery_cardiac_cycles: int,
-    cardiac_trigger_delay: float,
+    min_cardiac_trigger_delay: float,
     fov_xy: float,
     n_readout: int,
     readout_oversampling: float,
@@ -49,8 +49,9 @@ def t2_t2prep_flash_kernel(
         Echo times of T2-preparation pulse
     n_recovery_cardiac_cycles
         Number of cardiac cycles for magnetization recovery after each T2-pepared acquisition.
-    cardiac_trigger_delay
-        Delay after cardiac trigger (in seconds).
+    min_cardiac_trigger_delay
+        Minimum delay after cardiac trigger (in seconds).
+        The total trigger delay is implemented as a soft delay and can be chosen by the user in the UI.
     fov_xy
         Field of view in x and y direction (in meters).
     n_readout
@@ -180,6 +181,14 @@ def t2_t2prep_flash_kernel(
     rf_phase = 0
     rf_inc = 0
 
+    # create trigger soft delay (total duration: user_input/1.0 - min_cardiac_trigger_delay)
+    trig_soft_delay = pp.make_soft_delay(
+        hint='trig_delay',
+        offset=-min_cardiac_trigger_delay,
+        factor=1.0,
+        default_duration=0.4 - min_cardiac_trigger_delay,
+    )
+
     # obtain noise samples
     seq.add_block(pp.make_label(label='LIN', type='SET', value=0), pp.make_label(label='SLC', type='SET', value=0))
     seq.add_block(adc, pp.make_label(label='NOISE', type='SET', value=True))
@@ -190,22 +199,34 @@ def t2_t2prep_flash_kernel(
         if t2_prep_echo_time > 0:
             # get prep block duration and calculate corresponding trigger delay
             t2prep_block, prep_dur = add_t2_prep(echo_time=t2_prep_echo_time, system=system)
-            current_trig_delay = round_to_raster(
-                cardiac_trigger_delay - prep_dur - current_te / 2, raster_time=system.block_duration_raster
+            constant_trig_delay = round_to_raster(
+                min_cardiac_trigger_delay - prep_dur - current_te / 2, raster_time=system.block_duration_raster
             )
+            if constant_trig_delay < 0:
+                raise ValueError('Minimum trigger delay is too short for the selected T2prep timings.')
 
-            # add trigger
-            seq.add_block(pp.make_trigger(channel='physio1', duration=current_trig_delay))
+            # add trigger and constant part of trigger delay
+            seq.add_block(pp.make_trigger(channel='physio1', duration=constant_trig_delay))
+
+            # add variable part of trigger delay (soft delay)
+            seq.add_block(trig_soft_delay)
 
             # add all events of T2prep block
             for idx in t2prep_block.block_events:
                 seq.add_block(t2prep_block.get_block(idx))
 
         else:
-            current_trig_delay = round_to_raster(
-                cardiac_trigger_delay - current_te / 2, raster_time=system.block_duration_raster
+            constant_trig_delay = round_to_raster(
+                min_cardiac_trigger_delay - current_te / 2, raster_time=system.block_duration_raster
             )
-            seq.add_block(pp.make_trigger(channel='physio1', duration=current_trig_delay))
+            if constant_trig_delay < 0:
+                raise ValueError('Minimum trigger delay is too short for the current echo time.')
+
+            # add trigger and constant part of trigger delay
+            seq.add_block(pp.make_trigger(channel='physio1', duration=constant_trig_delay))
+
+            # add variable part of trigger delay (soft delay)
+            seq.add_block(trig_soft_delay)
 
         for pe_index_ in pe_steps:
             # calculate current phase_offset if rf_spoiling is activated
@@ -249,9 +270,11 @@ def t2_t2prep_flash_kernel(
         if t2_idx < len(t2_prep_echo_times) - 1:
             # add delay for magnetization recovery
             for _ in range(n_recovery_cardiac_cycles):
-                seq.add_block(
-                    pp.make_trigger(channel='physio1', duration=0.2)
-                )  # add delay of for magnetization recovery
+                # add trigger and constant part of trigger delay
+                seq.add_block(pp.make_trigger(channel='physio1', duration=min_cardiac_trigger_delay))
+
+                # add variable part of trigger delay (soft delay)
+                seq.add_block(trig_soft_delay)
 
     return seq, min_te, min_tr
 
@@ -261,7 +284,6 @@ def main(
     te: float | None = None,
     tr: float | None = None,
     t2_prep_echo_times: np.ndarray | None = None,
-    cardiac_trigger_delay: float = 0.4,
     fov_xy: float = 128e-3,
     n_readout: int = 128,
     acceleration: int = 2,
@@ -284,8 +306,6 @@ def main(
         Desired repetition time (TR) (in seconds). Minimum repetition time is used if set to None.
     t2_prep_echo_times
         Echo times of T2-preparation pulse. If None, default values of [0, 50, 100]ms are used.
-    cardiac_trigger_delay
-        Delay after cardiac trigger (in seconds).
     fov_xy
         Field of view in x and y direction (in meters).
     n_readout
@@ -309,7 +329,7 @@ def main(
         system = sys_defaults
 
     if t2_prep_echo_times is None:
-        t2_prep_echo_times = [0.0, 0.05, 0.1]
+        t2_prep_echo_times = np.asarray([0.0, 0.05, 0.1])
 
     n_recovery_cardiac_cycles = 3
 
@@ -337,7 +357,6 @@ def main(
 
     # define sequence filename
     filename = f'{Path(__file__).stem}_{int(fov_xy * 1000)}fov_{n_readout}nx_{acceleration}us_'
-    filename += f'trig{int(cardiac_trigger_delay * 1000)}ms'
 
     output_path = Path.cwd() / 'output'
     output_path.mkdir(parents=True, exist_ok=True)
@@ -348,7 +367,7 @@ def main(
         tr=tr,
         t2_prep_echo_times=t2_prep_echo_times,
         n_recovery_cardiac_cycles=n_recovery_cardiac_cycles,
-        cardiac_trigger_delay=cardiac_trigger_delay,
+        min_cardiac_trigger_delay=np.max(t2_prep_echo_times) + 0.05,  # max T2prep echo time + buffer for spoiler
         fov_xy=fov_xy,
         n_readout=n_readout,
         readout_oversampling=readout_oversampling,
