@@ -169,7 +169,7 @@ def t1_molli_bssfp_kernel(
         hint='trig_delay',
         offset=-min_cardiac_trigger_delay,
         factor=1.0,
-        default_duration=0.4 - min_cardiac_trigger_delay,
+        default_duration=0.8 - min_cardiac_trigger_delay,
     )
 
     # obtain noise samples
@@ -378,7 +378,7 @@ def main(
     n_bssfp_startup_pulses = 11  # number of bSSFP startup pulses to reach steady state.
 
     # define sequence filename
-    filename = f'{Path(__file__).stem}_{int(fov_xy * 1000)}fov_{n_readout}nx_{acceleration}us_'
+    filename = f'{Path(__file__).stem}_{int(fov_xy * 1000)}fov_{n_readout}nx_{acceleration}us'
 
     output_path = Path.cwd() / 'output'
     output_path.mkdir(parents=True, exist_ok=True)

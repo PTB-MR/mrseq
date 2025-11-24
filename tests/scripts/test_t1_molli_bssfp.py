@@ -3,7 +3,7 @@
 import pytest
 from mrseq.scripts.t1_molli_bssfp import main as create_seq
 
-EXPECTED_DUR = 6.55339  # defined 2025-11-06
+EXPECTED_DUR = 10.95339  # defined 2025-11-24
 
 
 def test_default_seq_duration(system_defaults):
