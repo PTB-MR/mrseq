@@ -17,7 +17,7 @@ def t1_molli_bssfp_kernel(
     te: float | None,
     tr: float | None,
     inversion_times: np.ndarray,
-    cardiac_trigger_delay: float,
+    min_cardiac_trigger_delay: float,
     fov_xy: float,
     n_readout: int,
     readout_oversampling: float,
@@ -44,8 +44,9 @@ def t1_molli_bssfp_kernel(
         Desired repetition time (TR) (in seconds). Minimum repetition time is used if set to None.
     inversion_times
         First inversion times for both acquisition blocks (in seconds).
-    cardiac_trigger_delay
-        Delay after cardiac trigger (in seconds).
+    min_cardiac_trigger_delay
+        Minimum delay after cardiac trigger (in seconds).
+        The total trigger delay is implemented as a soft delay and can be chosen by the user in the UI.
     fov_xy
         Field of view in x and y direction (in meters).
     n_readout
@@ -163,6 +164,14 @@ def t1_molli_bssfp_kernel(
     print(f'Current repetition time = {current_tr * 1000:.3f} ms')
     print(f'Acquisition window per cardiac cycle = {current_tr * len(pe_steps) * 1000:.3f} ms')
 
+    # create trigger soft delay (total duration: user_input/1.0 - min_cardiac_trigger_delay)
+    trig_soft_delay = pp.make_soft_delay(
+        hint='trig_delay',
+        offset=-min_cardiac_trigger_delay,
+        factor=1.0,
+        default_duration=0.4 - min_cardiac_trigger_delay,
+    )
+
     # obtain noise samples
     seq.add_block(pp.make_label(label='LIN', type='SET', value=0), pp.make_label(label='SLC', type='SET', value=0))
     seq.add_block(adc, pp.make_label(label='NOISE', type='SET', value=True))
@@ -189,11 +198,19 @@ def t1_molli_bssfp_kernel(
                 )
 
                 # add trigger
-                current_trig_delay = round_to_raster(
-                    cardiac_trigger_delay - delay_after_inversion_pulse - block_duration,
+                constant_trig_delay = round_to_raster(
+                    min_cardiac_trigger_delay - delay_after_inversion_pulse - block_duration,
                     raster_time=system.block_duration_raster,
                 )
-                seq.add_block(pp.make_trigger(channel='physio1', duration=current_trig_delay))
+
+                if constant_trig_delay < 0:
+                    raise ValueError('Minimum trigger delay is to small for selected inversion times.')
+
+                # add trigger and constant part of trigger delay
+                seq.add_block(pp.make_trigger(channel='physio1', duration=constant_trig_delay))
+
+                # add variable part of trigger delay (soft delay)
+                seq.add_block(trig_soft_delay)
 
                 # add inversion pulse
                 for idx in t1_inv_prep.block_events:
@@ -206,15 +223,19 @@ def t1_molli_bssfp_kernel(
                     )
                 )
             else:
-                current_trig_delay = round_to_raster(
-                    cardiac_trigger_delay
+                constant_trig_delay = round_to_raster(
+                    min_cardiac_trigger_delay
                     - n_bssfp_startup_pulses * current_tr
                     - current_te
                     - rf.shape_dur / 2
                     - max(rf.delay, gz.rise_time),
                     raster_time=system.block_duration_raster,
                 )
-                seq.add_block(pp.make_trigger(channel='physio1', duration=current_trig_delay))
+                # add trigger and constant part of trigger delay
+                seq.add_block(pp.make_trigger(channel='physio1', duration=constant_trig_delay))
+
+                # add variable part of trigger delay (soft delay)
+                seq.add_block(trig_soft_delay)
 
             rf_signal = rf.signal.copy()
             for pe_index in range(-n_bssfp_startup_pulses, len(pe_steps)):
@@ -273,12 +294,11 @@ def t1_molli_bssfp_kernel(
         # add three cardiac cycles for signal recovery
         if part_idx == 0:
             for _cardiac_index in range(3):
-                seq.add_block(
-                    pp.make_trigger(
-                        channel='physio1',
-                        duration=round_to_raster(cardiac_trigger_delay, raster_time=system.block_duration_raster),
-                    )
-                )
+                # add trigger and constant part of trigger delay
+                seq.add_block(pp.make_trigger(channel='physio1', duration=min_cardiac_trigger_delay))
+
+                # add variable part of trigger delay (soft delay)
+                seq.add_block(trig_soft_delay)
 
     return seq, min_te, min_tr
 
@@ -288,7 +308,6 @@ def main(
     te: float | None = None,
     tr: float | None = None,
     inversion_times: np.ndarray | None = None,
-    cardiac_trigger_delay: float = 0.4,
     fov_xy: float = 128e-3,
     n_readout: int = 128,
     acceleration: int = 2,
@@ -360,7 +379,6 @@ def main(
 
     # define sequence filename
     filename = f'{Path(__file__).stem}_{int(fov_xy * 1000)}fov_{n_readout}nx_{acceleration}us_'
-    filename += f'trig{int(cardiac_trigger_delay * 1000)}ms'
 
     output_path = Path.cwd() / 'output'
     output_path.mkdir(parents=True, exist_ok=True)
@@ -370,7 +388,7 @@ def main(
         te=te,
         tr=tr,
         inversion_times=inversion_times,
-        cardiac_trigger_delay=cardiac_trigger_delay,
+        min_cardiac_trigger_delay=max(inversion_times) + 0.02,  # max inversion time + approx inversion pulse duration
         fov_xy=fov_xy,
         n_readout=n_readout,
         readout_oversampling=readout_oversampling,
