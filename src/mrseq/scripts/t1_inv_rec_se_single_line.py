@@ -99,7 +99,7 @@ def t1_inv_rec_se_single_line_kernel(
     seq = pp.Sequence(system=system)
 
     # create slice selection 90° and 180° pulse and gradient
-    rf90, gz90, _ = pp.make_sinc_pulse(  # type: ignore
+    rf90, gz90, _ = pp.make_sinc_pulse(
         flip_angle=rf90_flip_angle / 180 * np.pi,
         duration=rf90_duration,
         slice_thickness=slice_thickness,
@@ -115,7 +115,7 @@ def t1_inv_rec_se_single_line_kernel(
     gz90_reph = pp.make_trapezoid(channel='z', system=system, area=-gz90.area / 2, duration=gx_pre_duration)
 
     # create 180° refocusing pulse and gradient
-    rf180, gz180, _ = pp.make_sinc_pulse(  # type: ignore
+    rf180, gz180, _ = pp.make_sinc_pulse(
         flip_angle=rf180_flip_angle / 180 * np.pi,
         duration=rf180_duration,
         slice_thickness=slice_thickness,
@@ -159,7 +159,7 @@ def t1_inv_rec_se_single_line_kernel(
     ).item()
 
     if te is None:
-        delay_gz90_reph_and_gz_spoil = delay_gz_spoil_and_gx_pre = 0
+        delay_gz90_reph_and_gz_spoil = delay_gz_spoil_and_gx_pre = 0.0
     else:
         # delays between excitation and refocusing pulse
         delay_gz90_reph_and_gz_spoil = (

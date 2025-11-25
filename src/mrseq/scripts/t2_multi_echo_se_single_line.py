@@ -84,13 +84,13 @@ def t2_multi_echo_se_single_line_kernel(
     seq = pp.Sequence(system=system)
 
     # create slice selection 90° and 180° pulse and gradient
-    rf90, gz90, _ = pp.make_sinc_pulse(  # type: ignore
+    rf90, gz90, _ = pp.make_sinc_pulse(
         flip_angle=rf90_flip_angle / 180 * np.pi,
         duration=rf90_duration,
         slice_thickness=slice_thickness,
         apodization=rf90_apodization,
         time_bw_product=rf90_bwt,
-        delay=system.rf_dead_time,  # type: ignore
+        delay=system.rf_dead_time,
         system=system,
         return_gz=True,
         use='excitation',
@@ -100,14 +100,14 @@ def t2_multi_echo_se_single_line_kernel(
     gz90_reph = pp.make_trapezoid(channel='z', system=system, area=-gz90.area / 2, duration=gx_pre_duration)
 
     # create 180° refocusing pulse and gradient
-    rf180, gz180, _ = pp.make_sinc_pulse(  # type: ignore
+    rf180, gz180, _ = pp.make_sinc_pulse(
         flip_angle=rf180_flip_angle / 180 * np.pi,
         duration=rf180_duration,
         slice_thickness=slice_thickness,
         apodization=rf180_apodization,
         time_bw_product=rf180_bwt,
         phase_offset=np.pi / 2,
-        delay=system.rf_dead_time,  # type: ignore
+        delay=system.rf_dead_time,
         system=system,
         return_gz=True,
         use='refocusing',
@@ -194,7 +194,7 @@ def t2_multi_echo_se_single_line_kernel(
 
             # calculate TR delay
             duration_tr_block = sum(seq.block_durations.values()) - _start_time_tr_block
-            tr_delay = round_to_raster(tr - duration_tr_block, system.block_duration_raster)  # type: ignore
+            tr_delay = round_to_raster(tr - duration_tr_block, system.block_duration_raster)
 
             # save duration of all events in the TR block of the first echo time for sequence plot
             if te_idx == 0 and pe_idx == 0:

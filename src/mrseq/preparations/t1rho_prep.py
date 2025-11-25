@@ -62,20 +62,20 @@ def add_t1rho_prep(
     # add 90° tip down pulse with phase offset of pi/2
     rf_pre = pp.make_sinc_pulse(
         flip_angle=np.pi / 2,
-        delay=system.rf_dead_time,  # type: ignore
+        delay=system.rf_dead_time,
         duration=duration_90,
         phase_offset=np.pi / 2,
         system=system,
         use='preparation',
     )
-    seq.add_block(rf_pre)  # type: ignore
+    seq.add_block(rf_pre)
 
     # spin-lock pulse without phase offset
     # calculate flip angle of spin-lock block pulse because make_block_pulse does not support b1 amp argument
     flip_angle_sl_block = 2 * np.pi * GYROMAGNETIC_RATIO_PROTON * spin_lock_time * spin_lock_amplitude
     rf_spin_lock = pp.make_block_pulse(
         flip_angle=flip_angle_sl_block,
-        delay=system.rf_dead_time,  # type: ignore
+        delay=system.rf_dead_time,
         duration=spin_lock_time,
         system=system,
         use='preparation',
@@ -85,19 +85,19 @@ def add_t1rho_prep(
     # add 90° pulse tip up with phase offset of -pi/2
     rf_post = pp.make_sinc_pulse(
         flip_angle=np.pi / 2,
-        delay=system.rf_dead_time,  # type: ignore
+        delay=system.rf_dead_time,
         duration=duration_90,
         phase_offset=-np.pi / 2,
         system=system,
         use='preparation',
     )
-    seq.add_block(rf_post)  # type: ignore
+    seq.add_block(rf_post)
 
     # add spoiler gradient if requested
     if add_spoiler:
         gz_spoiler = pp.make_trapezoid(
             channel='z',
-            amplitude=0.4 * system.max_grad,  # type: ignore
+            amplitude=0.4 * system.max_grad,
             flat_time=spoiler_flat_time,
             rise_time=spoiler_ramp_time,
         )

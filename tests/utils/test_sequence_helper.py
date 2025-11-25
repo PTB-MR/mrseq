@@ -76,7 +76,7 @@ def test_round_to_raster_round(value: float, raster_time: float, expected: float
 def test_round_to_raster_invalid_method():
     """Test that an invalid method raises a ValueError."""
     with pytest.raises(ValueError, match='Unknown rounding method'):
-        round_to_raster(1.0, 1.0, 'invalid')
+        round_to_raster(1.0, 1.0, 'invalid')  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize(

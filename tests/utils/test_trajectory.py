@@ -1,5 +1,7 @@
 """Tests for sequence helper functions."""
 
+from typing import Literal
+
 import numpy as np
 import pypulseq as pp
 import pytest
@@ -71,8 +73,8 @@ def test_spiral_acquisition(
     fov: float,
     undersampling_factor: float,
     n_spirals: int,
-    readout_oversampling: int,
-    spiral_type: str,
+    readout_oversampling: Literal[1, 2, 4],
+    spiral_type: Literal['out', 'in-out'],
 ):
     """Test spiral trajectories for different parameter combinations."""
     g_pre_duration = 2e-3  # make this duration long to work for all combinations
