@@ -349,6 +349,14 @@ def main(
         Toggles advanced test report.
     timing_check
         Toggles timing check of the sequence.
+
+
+    Returns
+    -------
+    seq
+        Sequence object of cardiac MOLLI T1 mapping sequence.
+    file_path
+        Path to the sequence file.
     """
     if system is None:
         system = sys_defaults
