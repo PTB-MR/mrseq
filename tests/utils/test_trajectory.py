@@ -34,7 +34,7 @@ def test_cartesian_phase_encoding_identical_points(
 
 
 @pytest.mark.parametrize('pattern', ['linear', 'low_high', 'high_low', 'random'])
-def test_cartesian_phase_encoding_acceleration(pattern: str):
+def test_cartesian_phase_encoding_acceleration(pattern: Literal['linear', 'low_high', 'high_low', 'random']):
     """Test correct undersampling factor."""
     n_pe_full = 100
     acceleration = 4

@@ -88,7 +88,7 @@ def t1_molli_bssfp_kernel(
     seq = pp.Sequence(system=system)
 
     # create slice selective excitation pulse and gradients
-    rf, gz, gzr = pp.make_sinc_pulse(  # type: ignore
+    rf, gz, gzr = pp.make_sinc_pulse(
         flip_angle=rf_flip_angle / 180 * np.pi,
         duration=rf_duration,
         slice_thickness=slice_thickness,
@@ -140,9 +140,12 @@ def t1_molli_bssfp_kernel(
     ).item()
 
     # calculate echo time delay (te_delay)
-    te_delay = 0 if te is None else round_to_raster(te - min_te, system.block_duration_raster)
-    if not te_delay >= 0:
-        raise ValueError(f'TE must be larger than {min_te * 1000:.3f} ms. Current value is {te * 1000:.3f} ms.')
+    if te is None:
+        te_delay = 0.0
+    else:
+        te_delay = round_to_raster(te - min_te, system.block_duration_raster)
+        if not te_delay >= 0:
+            raise ValueError(f'TE must be larger than {min_te * 1000:.3f} ms. Current value is {te * 1000:.3f} ms.')
     current_te = min_te + te_delay
 
     # calculate minimum repetition time
@@ -155,9 +158,14 @@ def t1_molli_bssfp_kernel(
 
     # calculate repetition time delay (tr_delay)
     current_min_tr = min_tr + te_delay
-    tr_delay = 0 if tr is None else round_to_raster(tr - current_min_tr, system.block_duration_raster)
-    if not tr_delay >= 0:
-        raise ValueError(f'TR must be larger than {current_min_tr * 1000:.3f} ms. Current value is {tr * 1000:.3f} ms.')
+    if tr is None:
+        tr_delay = 0.0
+    else:
+        tr_delay = round_to_raster(tr - current_min_tr, system.block_duration_raster)
+        if not tr_delay >= 0:
+            raise ValueError(
+                f'TR must be larger than {current_min_tr * 1000:.3f} ms. Current value is {tr * 1000:.3f} ms.'
+            )
     current_tr = current_min_tr + tr_delay
 
     print(f'\nCurrent echo time = {current_te * 1000:.3f} ms')
