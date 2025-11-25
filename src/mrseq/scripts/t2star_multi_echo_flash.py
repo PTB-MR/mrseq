@@ -41,8 +41,8 @@ def t2star_multi_echo_flash_kernel(
     rf_spoiling_phase_increment: float,
     gz_spoil_duration: float,
     gz_spoil_area: float,
-    mrd_header_file: str | None,
-) -> tuple[pp.Sequence, float, float]:
+    mrd_header_file: str | Path | None,
+) -> tuple[pp.Sequence, float, float, float]:
     """Generate a FLASH sequence with multiple echoes.
 
     Parameters
@@ -116,7 +116,7 @@ def t2star_multi_echo_flash_kernel(
     seq = pp.Sequence(system=system)
 
     # create slice selective excitation pulse and gradients
-    rf, gz, gzr = pp.make_sinc_pulse(  # type: ignore
+    rf, gz, gzr = pp.make_sinc_pulse(
         flip_angle=rf_flip_angle / 180 * np.pi,
         duration=rf_duration,
         slice_thickness=slice_thickness,
@@ -167,9 +167,12 @@ def t2star_multi_echo_flash_kernel(
     ).item()
 
     # calculate echo time delay (te_delay)
-    te_delay = 0 if te is None else round_to_raster(te - min_te, system.block_duration_raster)
-    if not te_delay >= 0:
-        raise ValueError(f'TE must be larger than {min_te * 1000:.3f} ms. Current value is {te * 1000:.3f} ms.')
+    if te is None:
+        te_delay = 0.0
+    else:
+        te_delay = round_to_raster(te - min_te, system.block_duration_raster)
+        if not te_delay >= 0:
+            raise ValueError(f'TE must be larger than {min_te * 1000:.3f} ms. Current value is {te * 1000:.3f} ms.')
     current_te = min_te + te_delay
 
     # calculate minimum repetition time
@@ -183,9 +186,14 @@ def t2star_multi_echo_flash_kernel(
 
     # calculate repetition time delay (tr_delay)
     current_min_tr = min_tr + te_delay
-    tr_delay = 0 if tr is None else round_to_raster(tr - current_min_tr, system.block_duration_raster)
-    if not tr_delay >= 0:
-        raise ValueError(f'TR must be larger than {current_min_tr * 1000:.3f} ms. Current value is {tr * 1000:.3f} ms.')
+    if tr is None:
+        tr_delay = 0.0
+    else:
+        tr_delay = round_to_raster(tr - current_min_tr, system.block_duration_raster)
+        if not tr_delay >= 0:
+            raise ValueError(
+                f'TR must be larger than {current_min_tr * 1000:.3f} ms. Current value is {tr * 1000:.3f} ms.'
+            )
     current_tr = current_min_tr + tr_delay
 
     print(f'\nCurrent echo time = {current_te * 1000:.3f} ms')
@@ -235,8 +243,8 @@ def t2star_multi_echo_flash_kernel(
         prot.append_acquisition(acq)
 
     # choose initial rf phase offset
-    rf_phase = 0
-    rf_inc = 0
+    rf_phase = 0.0
+    rf_inc = 0.0
 
     for cardiac_cycle_idx in range(len(pe_steps) // n_pe_points_per_cardiac_cycle):
         # add trigger and constant part of trigger delay
@@ -307,7 +315,7 @@ def t2star_multi_echo_flash_kernel(
     if mrd_header_file:
         prot.close()
 
-    return seq, min_te, min_tr, np.diff(time_to_echoes)
+    return seq, float(min_te), float(min_tr), np.diff(time_to_echoes)
 
 
 def main(
@@ -327,7 +335,7 @@ def main(
     show_plots: bool = True,
     test_report: bool = True,
     timing_check: bool = True,
-) -> pp.Sequence:
+) -> tuple[pp.Sequence, Path]:
     """Generate a FLASH sequence with multiple echoes.
 
     Parameters
@@ -444,7 +452,7 @@ def main(
     seq.set_definition('FOV', [fov_xy, fov_xy, slice_thickness])
     seq.set_definition('ReconMatrix', (n_readout, n_readout, 1))
     seq.set_definition('SliceThickness', slice_thickness)
-    if te:
+    if te is not None:
         echo_times = te + np.cumsum(np.concatenate((np.zeros(1), delta_te)))
     else:
         echo_times = min_te + np.cumsum(np.concatenate((np.zeros(1), delta_te)))

@@ -48,6 +48,7 @@ repos:
           - types-requests
           - typing-extensions
           - pytest
+          - scipy-stubs
 
 ci:
   autofix_commit_msg: |

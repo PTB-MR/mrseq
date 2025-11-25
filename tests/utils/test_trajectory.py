@@ -46,7 +46,10 @@ def test_cartesian_phase_encoding_acceleration(pattern: Literal['linear', 'low_h
 
 @pytest.mark.parametrize('pattern', ['linear', 'low_high', 'high_low', 'random'])
 @pytest.mark.parametrize('n_phase_encoding_per_shot', [3, 8, 11, 13])
-def test_cartesian_phase_encoding_integer_shots(pattern: str, n_phase_encoding_per_shot: int):
+def test_cartesian_phase_encoding_integer_shots(
+    pattern: Literal['linear', 'low_high', 'high_low', 'random'],
+    n_phase_encoding_per_shot: int,
+):
     """Test that the total number of phase encoding points lead to an integer number."""
     n_pe_full = 100
     acceleration = 4
@@ -248,7 +251,7 @@ def test_multi_gradient_echo_timing(n_echoes, readout_oversampling, n_readout, p
     k0_idx = argrelextrema(np.abs(m0_intp), np.less, order=100)[0]
 
     # Remove k0-crossings at the beginning and end of the block
-    k0_idx = [ki for ki in k0_idx if (ki > 100 and ki < len(dt) - 100)]
+    k0_idx = np.array([ki for ki in k0_idx if (ki > 100 and ki < len(dt) - 100)])
 
     # Zero-crossing of the readout gradient should be within +/- .5 adc dwell time of the k-space center sample which is
     # the (_n_readout_pre_echo + 1)th sample. This should also be the same as the time_to_echo - time
