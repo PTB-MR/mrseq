@@ -350,7 +350,7 @@ def spiral_acquisition(
     readout_oversampling: Literal[1, 2, 4],
     n_spirals: int | None,
     max_pre_duration: float,
-    spiral_type=Literal['out', 'in-out'],
+    spiral_type: Literal['out', 'in-out'],
 ):
     """Generate a spiral acquisition sequence.
 
@@ -487,14 +487,14 @@ def spiral_acquisition(
         max_pre_duration = 0.0
 
     def combine_gradients(*grad_objects, channel):
-        grad_objects = [grad for grad in grad_objects if grad]  # Remove None
-        waveform_combined = np.concatenate([grad.waveform for grad in grad_objects])
+        grad_list = [grad for grad in grad_objects if grad is not None]  # Remove None
+        waveform_combined = np.concatenate([grad.waveform for grad in grad_list])
 
         return pp.make_arbitrary_grad(
             channel=channel,
             waveform=waveform_combined,
             first=0,
-            delay=grad_objects[0].delay,
+            delay=grad_list[0].delay,
             last=0,
             system=system,
         )

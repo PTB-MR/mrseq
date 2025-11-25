@@ -58,18 +58,18 @@ def add_t1_inv_prep(
         adiabaticity=6,
         beta=800,
         mu=4.9,
-        delay=system.rf_dead_time,  # type: ignore
+        delay=system.rf_dead_time,
         duration=rf_duration,
         system=system,
         use='inversion',
     )
-    seq.add_block(rf)  # type: ignore
+    seq.add_block(rf)
 
     # Add spoiler gradient if requested
     if add_spoiler:
         gz_spoil = pp.make_trapezoid(
             channel='z',
-            amplitude=0.4 * system.max_grad,  # type: ignore
+            amplitude=0.4 * system.max_grad,
             flat_time=spoiler_flat_time,
             rise_time=spoiler_ramp_time,
             system=system,
@@ -80,6 +80,6 @@ def add_t1_inv_prep(
     block_duration = sum(seq.block_durations.values()) - time_start
 
     # calculate time passed since point of inversion (=middle of inversion pulse)
-    time_since_inversion = block_duration - system.rf_dead_time - rf_duration / 2  # type: ignore
+    time_since_inversion = block_duration - system.rf_dead_time - rf_duration / 2
 
     return (seq, block_duration, time_since_inversion)

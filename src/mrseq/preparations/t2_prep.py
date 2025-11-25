@@ -52,7 +52,7 @@ def add_composite_refocusing_block(
     for fa, phase, dur in zip(flip_angles, phases, durations, strict=True):
         rf = pp.make_block_pulse(
             flip_angle=fa * np.pi / 180,
-            delay=system.rf_dead_time,  # type: ignore
+            delay=system.rf_dead_time,
             duration=dur,
             phase_offset=phase * np.pi / 180,
             system=system,
@@ -66,7 +66,7 @@ def add_composite_refocusing_block(
     # calculate time from refocusing point to end of block
     time_since_refocusing = (
         durations[1] / 2  # half duration of 180° pulse
-        + system.rf_ringdown_time  # ringdown time of 180° pulse  # type: ignore
+        + system.rf_ringdown_time  # ringdown time of 180° pulse
         + system.rf_dead_time  # dead time of 90° pulse
         + durations[2]  # duration of 2nd 90° pulse
         + system.rf_ringdown_time  # ringdown time of 2nd 90° pulse
@@ -148,7 +148,7 @@ def add_t2_prep(
     # Create 90°x excitation pulse
     rf_90 = pp.make_block_pulse(
         flip_angle=np.pi / 2,
-        delay=system.rf_dead_time,  # type: ignore
+        delay=system.rf_dead_time,
         duration=duration_180 / 2,
         system=system,
         use='preparation',
@@ -162,7 +162,7 @@ def add_t2_prep(
     tau1 = (
         echo_time / 8
         - duration_180 / 4  # half duration of 90° excitation pulse
-        - system.rf_ringdown_time  # ringdown time of 90° excitation pulse  # type: ignore
+        - system.rf_ringdown_time  # ringdown time of 90° excitation pulse
         - system.rf_dead_time  # dead time of 90° pulse in refocusing block
         - duration_180 / 2  # duration of 90° pulse in refocusing block
         - system.rf_ringdown_time  # ringdown time of 90° pulse in refocusing block
@@ -230,7 +230,7 @@ def add_t2_prep(
     # add delay before first tip-up pulse
     tau3 = (
         echo_time / 8
-        - time_since_refocusing  # time since refocusing in 4th refocusing block  # type: ignore
+        - time_since_refocusing  # time since refocusing in 4th refocusing block
         - system.rf_dead_time  # dead time of 270° pulse in tip-up block
         - duration_180 / 2 * 3 / 2  # half duration of 270° pulse
     )
@@ -244,7 +244,7 @@ def add_t2_prep(
     # create 270° pulse of composite tip-up pulse (270°x + [-360]°x)
     rf_tip_up_270 = pp.make_block_pulse(
         flip_angle=3 * np.pi / 2,
-        delay=system.rf_dead_time,  # type: ignore
+        delay=system.rf_dead_time,
         duration=duration_180 / 2 * 3,
         system=system,
         use='preparation',
@@ -253,7 +253,7 @@ def add_t2_prep(
     # create -360° pulse of composite tip-up pulse (270°x + [-360]°x)
     rf_tip_up_360 = pp.make_block_pulse(
         flip_angle=-2 * np.pi,
-        delay=system.rf_dead_time,  # type: ignore
+        delay=system.rf_dead_time,
         duration=duration_180 * 2,
         system=system,
         use='preparation',
@@ -267,7 +267,7 @@ def add_t2_prep(
     if add_spoiler:
         gz_spoil = pp.make_trapezoid(
             channel='z',
-            amplitude=0.4 * system.max_grad,  # type: ignore
+            amplitude=0.4 * system.max_grad,
             flat_time=spoiler_flat_time,
             rise_time=spoiler_ramp_time,
             system=system,
