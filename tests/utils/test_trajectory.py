@@ -9,6 +9,7 @@ from mrseq.utils import spiral_acquisition
 from mrseq.utils.trajectory import MultiEchoAcquisition
 from mrseq.utils.trajectory import cartesian_phase_encoding
 from mrseq.utils.trajectory import undersampled_variable_density_spiral
+from scipy.signal import argrelextrema
 
 
 @pytest.mark.parametrize('n_phase_encoding', [50, 51, 100])
@@ -235,8 +236,9 @@ def test_multi_gradient_echo_timing(n_echoes, readout_oversampling, n_readout, p
         partial_echo_factor=partial_echo_factor,
     )
     seq, time_to_echoes = mecho.add_to_seq(seq, n_echoes)
-
-    from scipy.signal import argrelextrema
+    if n_echoes > 1:
+        # Ensure that the delta TE is the same between all echoes
+        assert len(np.unique(np.round(np.diff(time_to_echoes), decimals=6))) == 1
 
     # Get full waveform for readout gradient
     w = seq.waveforms_and_times()

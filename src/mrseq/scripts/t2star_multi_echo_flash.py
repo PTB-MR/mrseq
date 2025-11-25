@@ -315,7 +315,8 @@ def t2star_multi_echo_flash_kernel(
     if mrd_header_file:
         prot.close()
 
-    return seq, float(min_te), float(min_tr), np.diff(time_to_echoes)
+    delta_te_array = np.diff(time_to_echoes)
+    return seq, float(min_te), float(min_tr), float(delta_te_array[0])
 
 
 def main(
@@ -452,11 +453,7 @@ def main(
     seq.set_definition('FOV', [fov_xy, fov_xy, slice_thickness])
     seq.set_definition('ReconMatrix', (n_readout, n_readout, 1))
     seq.set_definition('SliceThickness', slice_thickness)
-    if te is not None:
-        echo_times = te + np.cumsum(np.concatenate((np.zeros(1), delta_te)))
-    else:
-        echo_times = min_te + np.cumsum(np.concatenate((np.zeros(1), delta_te)))
-    seq.set_definition('TE', [te.item() for te in echo_times])
+    seq.set_definition('TE', [(te or min_te) + idx * delta_te for idx in range(n_echoes)])
     seq.set_definition('TR', tr or min_tr)
     seq.set_definition('ReadoutOversamplingFactor', readout_oversampling)
 
