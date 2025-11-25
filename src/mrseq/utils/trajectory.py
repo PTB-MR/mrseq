@@ -86,7 +86,7 @@ def spiral_acquisition(
     readout_oversampling: Literal[1, 2, 4],
     n_spirals: int | None,
     max_pre_duration: float,
-    spiral_type=Literal['out', 'in-out'],
+    spiral_type: Literal['out', 'in-out'],
 ):
     """Generate a spiral acquisition sequence.
 

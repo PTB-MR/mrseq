@@ -256,7 +256,7 @@ def main(
     show_plots: bool = True,
     test_report: bool = True,
     timing_check: bool = True,
-) -> pp.Sequence:
+) -> tuple[pp.Sequence, Path]:
     """Generate a spiral FLASH sequence.
 
     Parameters
@@ -289,6 +289,13 @@ def main(
         Toggles advanced test report.
     timing_check
         Toggles timing check of the sequence.
+
+    Returns
+    -------
+    seq
+        Sequence object of spiral FLASH sequence.
+    file_path
+        Path to the sequence file.
     """
     if system is None:
         system = sys_defaults

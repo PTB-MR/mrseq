@@ -79,8 +79,6 @@ def t2_multi_echo_se_single_line_kernel(
         PyPulseq Sequence object
     time_to_first_tr_block
         End point of first TR block.
-    min_te
-        Shortest possible echo time.
     """
     # create PyPulseq Sequence object and set system limits
     seq = pp.Sequence(system=system)
@@ -221,7 +219,7 @@ def main(
     show_plots: bool = True,
     test_report: bool = True,
     timing_check: bool = True,
-) -> pp.Sequence:
+) -> tuple[pp.Sequence, Path]:
     """Generate a SE-based multi-echo sequence for T2 mapping.
 
     Parameters
@@ -247,6 +245,13 @@ def main(
         Toggles advanced test report.
     timing_check
         Toggles timing check of the sequence.
+
+    Returns
+    -------
+    seq
+        Sequence object of SE-based multi-echo T2 sequence.
+    file_path
+        Path to the sequence file.
     """
     if system is None:
         system = sys_defaults
