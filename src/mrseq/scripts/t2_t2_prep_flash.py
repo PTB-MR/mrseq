@@ -186,7 +186,7 @@ def t2_t2prep_flash_kernel(
         hint='trig_delay',
         offset=-min_cardiac_trigger_delay,
         factor=1.0,
-        default_duration=0.4 - min_cardiac_trigger_delay,
+        default_duration=0.8 - min_cardiac_trigger_delay,
     )
 
     # obtain noise samples

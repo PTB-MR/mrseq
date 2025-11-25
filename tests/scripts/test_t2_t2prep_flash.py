@@ -1,7 +1,7 @@
 """Tests for 2D Cartesian FLASH with T2-preparation pulses for T2 mapping."""
 
 import pytest
-from mrseq.scripts.t2_t2prep_flash import main as create_seq
+from mrseq.scripts.t2_t2_prep_flash import main as create_seq
 
 EXPECTED_DUR = 4.57667  # defined 2025-11-24
 
