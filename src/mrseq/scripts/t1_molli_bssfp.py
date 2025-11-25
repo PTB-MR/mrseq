@@ -317,7 +317,7 @@ def main(
     show_plots: bool = True,
     test_report: bool = True,
     timing_check: bool = True,
-) -> pp.Sequence:
+) -> tuple[pp.Sequence, Path]:
     """Generate a 5(3)3 MOLLI sequence with bSSFP readout for cardiac T1 mapping.
 
     Parameters
@@ -330,9 +330,7 @@ def main(
         Desired repetition time (TR) (in seconds). Minimum repetition time is used if set to None.
     inversion_times
         First inversion times for both acquisition blocks (in seconds).
-        If None, default values of [100, 180]ms are used.
-    cardiac_trigger_delay
-        Delay after cardiac trigger (in seconds).
+        If None, default values of [100, 180] ms are used.
     fov_xy
         Field of view in x and y direction (in meters).
     n_readout
