@@ -1,5 +1,7 @@
 """Tests for sequence helper functions."""
 
+from typing import Literal
+
 import numpy as np
 import pypulseq as pp
 import pytest
@@ -32,8 +34,8 @@ def test_cartesian_phase_encoding_identical_points(
 
 
 @pytest.mark.parametrize('pattern', ['linear', 'low_high', 'high_low', 'random'])
-def test_cartesian_phase_encoding_acceleration(pattern: str):
-    """Test that correct undersampling."""
+def test_cartesian_phase_encoding_acceleration(pattern: Literal['linear', 'low_high', 'high_low', 'random']):
+    """Test correct undersampling factor."""
     n_pe_full = 100
     acceleration = 4
 
@@ -105,8 +107,8 @@ def test_spiral_acquisition(
     fov: float,
     undersampling_factor: float,
     n_spirals: int,
-    readout_oversampling: int,
-    spiral_type: str,
+    readout_oversampling: Literal[1, 2, 4],
+    spiral_type: Literal['out', 'in-out'],
 ):
     """Test spiral trajectories for different parameter combinations."""
     g_pre_duration = 2e-3  # make this duration long to work for all combinations

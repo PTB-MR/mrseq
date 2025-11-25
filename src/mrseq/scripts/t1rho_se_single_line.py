@@ -99,7 +99,7 @@ def t1rho_se_single_line_kernel(
     seq = pp.Sequence(system=system)
 
     # create slice selective 90° RF pulse and gradient
-    rf90, gz90, _ = pp.make_sinc_pulse(  # type: ignore
+    rf90, gz90, _ = pp.make_sinc_pulse(
         flip_angle=rf90_flip_angle / 180 * np.pi,
         duration=rf90_duration,
         slice_thickness=slice_thickness,
@@ -115,7 +115,7 @@ def t1rho_se_single_line_kernel(
     gz90_reph = pp.make_trapezoid(channel='z', system=system, area=-gz90.area / 2, duration=gx_pre_duration)
 
     # create 180° refocusing pulse and gradient
-    rf180, gz180, _ = pp.make_sinc_pulse(  # type: ignore
+    rf180, gz180, _ = pp.make_sinc_pulse(
         flip_angle=rf180_flip_angle / 180 * np.pi,
         duration=rf180_duration,
         slice_thickness=slice_thickness,
@@ -159,7 +159,7 @@ def t1rho_se_single_line_kernel(
     ).item()
 
     if te is None:
-        delay_gz90_reph_and_gz_spoil = delay_gz_spoil_and_gx_pre = 0
+        delay_gz90_reph_and_gz_spoil = delay_gz_spoil_and_gx_pre = 0.0
     else:
         # delays between excitation and refocusing pulse
         delay_gz90_reph_and_gz_spoil = (
@@ -266,7 +266,7 @@ def main(
     show_plots: bool = True,
     test_report: bool = True,
     timing_check: bool = True,
-) -> pp.Sequence:
+) -> tuple[pp.Sequence, Path]:
     """Generate a SE-based sequence for T1rho mapping with one preparation pulse before every readout.
 
     Parameters
@@ -294,6 +294,13 @@ def main(
         Toggles advanced test report.
     timing_check
         Toggles timing check of the sequence.
+
+    Returns
+    -------
+    seq
+        Sequence object of SE-based T1rho sequence.
+    file_path
+        Path to the sequence file.
     """
     if system is None:
         system = sys_defaults

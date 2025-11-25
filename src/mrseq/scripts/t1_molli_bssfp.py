@@ -1,23 +1,22 @@
-"""2D Cartesian FLASH with T2-preparation pulses for T2 mapping."""
+"""2D Cartesian MOLLI with bSSFP mapping for cardiac T1 mapping."""
 
 from pathlib import Path
 
 import numpy as np
 import pypulseq as pp
 
-from mrseq.preparations.t2_prep import add_t2_prep
+from mrseq.preparations.t1_inv_prep import add_t1_inv_prep
 from mrseq.utils import find_gx_flat_time_on_adc_raster
 from mrseq.utils import round_to_raster
 from mrseq.utils import sys_defaults
 from mrseq.utils.trajectory import cartesian_phase_encoding
 
 
-def t2_t2prep_flash_kernel(
+def t1_molli_bssfp_kernel(
     system: pp.Opts,
     te: float | None,
     tr: float | None,
-    t2_prep_echo_times: np.ndarray,
-    n_recovery_cardiac_cycles: int,
+    inversion_times: np.ndarray,
     min_cardiac_trigger_delay: float,
     fov_xy: float,
     n_readout: int,
@@ -25,17 +24,15 @@ def t2_t2prep_flash_kernel(
     acceleration: int,
     n_fully_sampled_center: int,
     slice_thickness: float,
+    n_bssfp_startup_pulses: int,
     gx_pre_duration: float,
     gx_flat_time: float,
     rf_duration: float,
     rf_flip_angle: float,
     rf_bwt: float,
     rf_apodization: float,
-    rf_spoiling_phase_increment: float,
-    gz_spoil_duration: float,
-    gz_spoil_area: float,
 ) -> tuple[pp.Sequence, float, float]:
-    """Generate a FLASH sequence with T2-preparation pulses.
+    """Generate a 5(3)3 MOLLI sequence with bSSFP readout for cardiac T1 mapping.
 
     Parameters
     ----------
@@ -44,11 +41,9 @@ def t2_t2prep_flash_kernel(
     te
         Desired echo time (TE) (in seconds). Minimum echo time is used if set to None.
     tr
-        Desired repetition time (TR) (in seconds).
-    t2_prep_echo_times
-        Echo times of T2-preparation pulse
-    n_recovery_cardiac_cycles
-        Number of cardiac cycles for magnetization recovery after each T2-pepared acquisition.
+        Desired repetition time (TR) (in seconds). Minimum repetition time is used if set to None.
+    inversion_times
+        First inversion times for both acquisition blocks (in seconds).
     min_cardiac_trigger_delay
         Minimum delay after cardiac trigger (in seconds).
         The total trigger delay is implemented as a soft delay and can be chosen by the user in the UI.
@@ -64,6 +59,8 @@ def t2_t2prep_flash_kernel(
         Number of phsae encoding points in the fully sampled center. This will reduce the overall undersampling factor.
     slice_thickness
         Slice thickness of the 2D slice (in meters).
+    n_bssfp_startup_pulses
+        Number of bSSFP startup pulses to reach steady state. A linear flip angle ramp is used during the startup.
     gx_pre_duration
         Duration of readout pre-winder gradient (in seconds)
     gx_flat_time
@@ -76,12 +73,6 @@ def t2_t2prep_flash_kernel(
         Bandwidth-time product of rf excitation pulse (Hz * seconds)
     rf_apodization
         Apodization factor of rf excitation pulse
-    rf_spoiling_phase_increment
-        RF spoiling phase increment (in degrees). Set to 0 for no RF spoiling.
-    gz_spoil_duration
-        Duration of spoiler gradient (in seconds)
-    gz_spoil_area
-        Area of spoiler gradient (in mT/m * s)
 
     Returns
     -------
@@ -93,9 +84,6 @@ def t2_t2prep_flash_kernel(
         Shortest possible echo time.
 
     """
-    if readout_oversampling < 1:
-        raise ValueError('Readout oversampling factor must be >= 1.')
-
     # create PyPulseq Sequence object and set system limits
     seq = pp.Sequence(system=system)
 
@@ -119,6 +107,8 @@ def t2_t2prep_flash_kernel(
     n_readout_with_oversampling = n_readout_with_oversampling + np.mod(n_readout_with_oversampling, 2)  # make even
     adc = pp.make_adc(num_samples=n_readout_with_oversampling, duration=gx.flat_time, delay=gx.rise_time, system=system)
 
+    print(f'Current receiver bandwidth = {1 / gx.flat_time:.0f} Hz/pixel')
+
     # create frequency encoding pre- and re-winder gradient
     gx_pre = pp.make_trapezoid(channel='x', area=-gx.area / 2 - delta_k / 2, duration=gx_pre_duration, system=system)
     gx_post = pp.make_trapezoid(channel='x', area=-gx.area / 2 + delta_k / 2, duration=gx_pre_duration, system=system)
@@ -133,9 +123,6 @@ def t2_t2prep_flash_kernel(
         n_fully_sampled_center=n_fully_sampled_center,
         sampling_order='low_high',
     )
-
-    # create spoiler gradients
-    gz_spoil = pp.make_trapezoid(channel='z', system=system, area=gz_spoil_area, duration=gz_spoil_duration)
 
     # calculate minimum echo time
     if te is None:
@@ -157,7 +144,7 @@ def t2_t2prep_flash_kernel(
         te_delay = 0.0
     else:
         te_delay = round_to_raster(te - min_te, system.block_duration_raster)
-        if te_delay < 0:
+        if not te_delay >= 0:
             raise ValueError(f'TE must be larger than {min_te * 1000:.3f} ms. Current value is {te * 1000:.3f} ms.')
     current_te = min_te + te_delay
 
@@ -166,7 +153,7 @@ def t2_t2prep_flash_kernel(
         pp.calc_duration(gz)  # rf pulse
         + gzr_gx_dur  # slice selection re-phasing gradient and readout pre-winder
         + pp.calc_duration(gx)  # readout gradient
-        + pp.calc_duration(gz_spoil, gx_post)  # gradient spoiler or readout-re-winder
+        + pp.calc_duration(gzr, gx_post)  # readout or slice rewinder
     )
 
     # calculate repetition time delay (tr_delay)
@@ -185,10 +172,6 @@ def t2_t2prep_flash_kernel(
     print(f'Current repetition time = {current_tr * 1000:.3f} ms')
     print(f'Acquisition window per cardiac cycle = {current_tr * len(pe_steps) * 1000:.3f} ms')
 
-    # choose initial rf phase offset
-    rf_phase = 0.0
-    rf_inc = 0.0
-
     # create trigger soft delay (total duration: user_input/1.0 - min_cardiac_trigger_delay)
     trig_soft_delay = pp.make_soft_delay(
         hint='trig_delay',
@@ -203,81 +186,122 @@ def t2_t2prep_flash_kernel(
     seq.add_block(pp.make_label(label='NOISE', type='SET', value=False))
     seq.add_block(pp.make_delay(system.rf_dead_time))
 
-    for t2_idx, t2_prep_echo_time in enumerate(t2_prep_echo_times):
-        if t2_prep_echo_time > 0:
-            # get prep block duration and calculate corresponding trigger delay
-            t2prep_block, prep_dur = add_t2_prep(echo_time=t2_prep_echo_time, system=system)
-            constant_trig_delay = round_to_raster(
-                min_cardiac_trigger_delay - prep_dur - current_te / 2, raster_time=system.block_duration_raster
-            )
-            if constant_trig_delay < 0:
-                raise ValueError('Minimum trigger delay is too short for the selected T2prep timings.')
+    # Create inversion pulse
+    t1_inv_prep, block_duration, time_since_inversion = add_t1_inv_prep(system=system)
 
-            # add trigger and constant part of trigger delay
-            seq.add_block(pp.make_trigger(channel='physio1', duration=constant_trig_delay))
+    # In the first part 5 images are acquired in 5 cardiac cycles, followed by 3 cardiac cycles without data
+    # acquisition for signal recovery. Then 3 images are acquired in 3 cardiac cycles in the second part.
+    contrast_index = 0
+    for part_idx, n_cycles in enumerate((5, 3)):
+        for cardiac_index in range(n_cycles):
+            if cardiac_index == 0:
+                # waiting time to achieve inversion time
+                delay_after_inversion_pulse = (
+                    inversion_times[part_idx]
+                    - time_since_inversion
+                    - n_bssfp_startup_pulses * current_tr
+                    - current_te
+                    - rf.shape_dur / 2
+                    - max(rf.delay, gz.rise_time)
+                )
 
-            # add variable part of trigger delay (soft delay)
-            seq.add_block(trig_soft_delay)
+                # add trigger
+                constant_trig_delay = round_to_raster(
+                    min_cardiac_trigger_delay - delay_after_inversion_pulse - block_duration,
+                    raster_time=system.block_duration_raster,
+                )
 
-            # add all events of T2prep block
-            for idx in t2prep_block.block_events:
-                seq.add_block(t2prep_block.get_block(idx))
+                if constant_trig_delay < 0:
+                    raise ValueError('Minimum trigger delay is to small for selected inversion times.')
 
-        else:
-            constant_trig_delay = round_to_raster(
-                min_cardiac_trigger_delay - current_te / 2, raster_time=system.block_duration_raster
-            )
-            if constant_trig_delay < 0:
-                raise ValueError('Minimum trigger delay is too short for the current echo time.')
+                # add trigger and constant part of trigger delay
+                seq.add_block(pp.make_trigger(channel='physio1', duration=constant_trig_delay))
 
-            # add trigger and constant part of trigger delay
-            seq.add_block(pp.make_trigger(channel='physio1', duration=constant_trig_delay))
+                # add variable part of trigger delay (soft delay)
+                seq.add_block(trig_soft_delay)
 
-            # add variable part of trigger delay (soft delay)
-            seq.add_block(trig_soft_delay)
+                # add inversion pulse
+                for idx in t1_inv_prep.block_events:
+                    seq.add_block(t1_inv_prep.get_block(idx))
 
-        for pe_index_ in pe_steps:
-            # calculate current phase_offset if rf_spoiling is activated
-            if rf_spoiling_phase_increment > 0:
-                rf.phase_offset = rf_phase / 180 * np.pi
-                adc.phase_offset = rf_phase / 180 * np.pi
-
-            # add slice selective excitation pulse
-            seq.add_block(rf, gz)
-
-            # update rf phase offset for the next excitation pulse
-            rf_inc = divmod(rf_inc + rf_spoiling_phase_increment, 360.0)[1]
-            rf_phase = divmod(rf_phase + rf_inc, 360.0)[1]
-
-            # set labels for the next spoke
-            labels = []
-            labels.append(pp.make_label(label='LIN', type='SET', value=int(pe_index_ - np.min(pe_steps))))
-            labels.append(pp.make_label(label='IMA', type='SET', value=pe_index_ in pe_fully_sampled_center))
-            labels.append(pp.make_label(type='SET', label='ECO', value=int(t2_idx)))
-
-            # calculate current phase encoding gradient
-            gy_pre = pp.make_trapezoid(channel='y', area=delta_k * pe_index_, duration=gx_pre_duration, system=system)
-
-            if te is not None:
-                seq.add_block(gzr)
-                seq.add_block(pp.make_delay(te_delay))
-                seq.add_block(gx_pre, gy_pre, *labels)
+                # wait until inversion time is reached
+                seq.add_block(
+                    pp.make_delay(
+                        round_to_raster(delay_after_inversion_pulse, raster_time=system.block_duration_raster)
+                    )
+                )
             else:
-                seq.add_block(gx_pre, gy_pre, gzr, *labels)
+                constant_trig_delay = round_to_raster(
+                    min_cardiac_trigger_delay
+                    - n_bssfp_startup_pulses * current_tr
+                    - current_te
+                    - rf.shape_dur / 2
+                    - max(rf.delay, gz.rise_time),
+                    raster_time=system.block_duration_raster,
+                )
+                # add trigger and constant part of trigger delay
+                seq.add_block(pp.make_trigger(channel='physio1', duration=constant_trig_delay))
 
-            # add the readout gradient and ADC
-            seq.add_block(gx, adc)
+                # add variable part of trigger delay (soft delay)
+                seq.add_block(trig_soft_delay)
 
-            gy_pre.amplitude = -gy_pre.amplitude
-            seq.add_block(gx_post, gy_pre, gz_spoil)
+            rf_signal = rf.signal.copy()
+            for pe_index in range(-n_bssfp_startup_pulses, len(pe_steps)):
+                # add slice selective excitation pulse
+                if pe_index < 0:
+                    # use linear flip angle ramp for bSSFP startup pulses
+                    rf.signal = rf_signal * 1 / n_bssfp_startup_pulses * (n_bssfp_startup_pulses + pe_index + 1)
+                else:
+                    rf.signal = rf_signal
+                if np.mod(pe_index, 2) == 0:
+                    rf.phase_offset = -np.pi
+                    adc.phase_offset = -np.pi
+                else:
+                    rf.phase_offset = 0.0
+                    adc.phase_offset = 0.0
+                seq.add_block(rf, gz)
 
-            # add delay in case TR > min_TR
-            if tr_delay > 0:
-                seq.add_block(pp.make_delay(tr_delay))
+                # set labels for the next spoke
+                labels = []
+                labels.append(pp.make_label(label='LIN', type='SET', value=int(pe_steps[pe_index] - np.min(pe_steps))))
+                labels.append(
+                    pp.make_label(label='IMA', type='SET', value=pe_steps[pe_index] in pe_fully_sampled_center)
+                )
+                labels.append(pp.make_label(type='SET', label='ECO', value=int(contrast_index)))
 
-        if t2_idx < len(t2_prep_echo_times) - 1:
-            # add delay for magnetization recovery
-            for _ in range(n_recovery_cardiac_cycles):
+                # calculate current phase encoding gradient
+                gy_pre = pp.make_trapezoid(
+                    channel='y',
+                    area=delta_k * pe_steps[pe_index if pe_index >= 0 else 0],
+                    duration=gx_pre_duration,
+                    system=system,
+                )
+
+                if te is not None:
+                    seq.add_block(gzr)
+                    seq.add_block(pp.make_delay(te_delay))
+                    seq.add_block(gx_pre, gy_pre, *labels)
+                else:
+                    seq.add_block(gx_pre, gy_pre, gzr, *labels)
+
+                # add the readout gradient and ADC
+                if pe_index >= 0:
+                    seq.add_block(gx, adc)
+                else:
+                    seq.add_block(gx)
+
+                gy_pre.amplitude = -gy_pre.amplitude
+                seq.add_block(gx_post, gy_pre, gzr)
+
+                # add delay in case TR > min_TR
+                if tr_delay > 0:
+                    seq.add_block(pp.make_delay(tr_delay))
+
+            contrast_index += 1
+
+        # add three cardiac cycles for signal recovery
+        if part_idx == 0:
+            for _cardiac_index in range(3):
                 # add trigger and constant part of trigger delay
                 seq.add_block(pp.make_trigger(channel='physio1', duration=min_cardiac_trigger_delay))
 
@@ -291,18 +315,18 @@ def main(
     system: pp.Opts | None = None,
     te: float | None = None,
     tr: float | None = None,
-    t2_prep_echo_times: np.ndarray | None = None,
+    inversion_times: np.ndarray | None = None,
     fov_xy: float = 128e-3,
     n_readout: int = 128,
     acceleration: int = 2,
     n_fully_sampled_center: int = 12,
     slice_thickness: float = 8e-3,
-    receiver_bandwidth_per_pixel: float = 800,  # Hz/pixel
+    receiver_bandwidth_per_pixel: float = 1000,  # Hz/pixel
     show_plots: bool = True,
     test_report: bool = True,
     timing_check: bool = True,
-) -> pp.Sequence:
-    """Generate a FLASH sequence with T2-preparation pulses.
+) -> tuple[pp.Sequence, Path]:
+    """Generate a 5(3)3 MOLLI sequence with bSSFP readout for cardiac T1 mapping.
 
     Parameters
     ----------
@@ -312,8 +336,9 @@ def main(
         Desired echo time (TE) (in seconds). Minimum echo time is used if set to None.
     tr
         Desired repetition time (TR) (in seconds). Minimum repetition time is used if set to None.
-    t2_prep_echo_times
-        Echo times of T2-preparation pulse. If None, default values of [0, 50, 100]ms are used.
+    inversion_times
+        First inversion times for both acquisition blocks (in seconds).
+        If None, default values of [100, 180] ms are used.
     fov_xy
         Field of view in x and y direction (in meters).
     n_readout
@@ -332,19 +357,25 @@ def main(
         Toggles advanced test report.
     timing_check
         Toggles timing check of the sequence.
+
+
+    Returns
+    -------
+    seq
+        Sequence object of cardiac MOLLI T1 mapping sequence.
+    file_path
+        Path to the sequence file.
     """
     if system is None:
         system = sys_defaults
 
-    if t2_prep_echo_times is None:
-        t2_prep_echo_times = np.asarray([0.0, 0.05, 0.1])
-
-    n_recovery_cardiac_cycles = 3
+    if inversion_times is None:
+        inversion_times = np.asarray([0.1, 0.18])
 
     # define settings of rf excitation pulse
-    rf_duration = 1.28e-3  # duration of the rf excitation pulse [s]
-    rf_flip_angle = 12  # flip angle of rf excitation pulse [°]
-    rf_bwt = 4  # bandwidth-time product of rf excitation pulse [Hz*s]
+    rf_duration = 0.5e-3  # duration of the rf excitation pulse [s]
+    rf_flip_angle = 35  # flip angle of rf excitation pulse [°]
+    rf_bwt = 1.5  # bandwidth-time product of rf excitation pulse [Hz*s]
     rf_apodization = 0.5  # apodization factor of rf excitation pulse
     readout_oversampling = 2  # readout oversampling factor, commonly 2. This reduces aliasing artifacts.
 
@@ -353,44 +384,39 @@ def main(
     adc_dwell_time = round_to_raster(
         1.0 / (receiver_bandwidth_per_pixel * n_readout_with_oversampling), system.adc_raster_time
     )
-    gx_pre_duration = 0.8e-3  # duration of readout pre-winder gradient [s]
+    gx_pre_duration = 0.72e-3  # duration of readout pre-winder gradient [s]
     gx_flat_time, adc_dwell_time = find_gx_flat_time_on_adc_raster(
         n_readout_with_oversampling, adc_dwell_time, system.grad_raster_time, system.adc_raster_time
     )
 
-    # define spoiling
-    gz_spoil_duration = 0.8e-3  # duration of spoiler gradient [s]
-    gz_spoil_area = 4 / slice_thickness  # area / zeroth gradient moment of spoiler gradient
-    rf_spoiling_phase_increment = 117  # RF spoiling phase increment [°]. Set to 0 for no RF spoiling.
+    n_bssfp_startup_pulses = 11  # number of bSSFP startup pulses to reach steady state.
 
     # define sequence filename
-    filename = f'{Path(__file__).stem}_{int(fov_xy * 1000)}fov_{n_readout}nx_{acceleration}us_'
+    filename = f'{Path(__file__).stem}_{int(fov_xy * 1000)}fov_{n_readout}nx_{acceleration}us'
 
     output_path = Path.cwd() / 'output'
     output_path.mkdir(parents=True, exist_ok=True)
 
-    seq, min_te, min_tr = t2_t2prep_flash_kernel(
+    seq, min_te, min_tr = t1_molli_bssfp_kernel(
         system=system,
         te=te,
         tr=tr,
-        t2_prep_echo_times=t2_prep_echo_times,
-        n_recovery_cardiac_cycles=n_recovery_cardiac_cycles,
-        min_cardiac_trigger_delay=np.max(t2_prep_echo_times) + 0.05,  # max T2prep echo time + buffer for spoiler
+        inversion_times=inversion_times,
+        min_cardiac_trigger_delay=np.max(inversion_times)
+        + 0.02,  # max inversion time + approx inversion pulse duration
         fov_xy=fov_xy,
         n_readout=n_readout,
         readout_oversampling=readout_oversampling,
         acceleration=acceleration,
         n_fully_sampled_center=n_fully_sampled_center,
         slice_thickness=slice_thickness,
+        n_bssfp_startup_pulses=n_bssfp_startup_pulses,
         gx_pre_duration=gx_pre_duration,
         gx_flat_time=gx_flat_time,
         rf_duration=rf_duration,
         rf_flip_angle=rf_flip_angle,
         rf_bwt=rf_bwt,
         rf_apodization=rf_apodization,
-        rf_spoiling_phase_increment=rf_spoiling_phase_increment,
-        gz_spoil_duration=gz_spoil_duration,
-        gz_spoil_area=gz_spoil_area,
     )
 
     # check timing of the sequence
@@ -413,6 +439,7 @@ def main(
     seq.set_definition('SliceThickness', slice_thickness)
     seq.set_definition('TE', te or min_te)
     seq.set_definition('TR', tr or min_tr)
+    seq.set_definition('TI', inversion_times.tolist())
     seq.set_definition('ReadoutOversamplingFactor', readout_oversampling)
 
     # save seq-file to disk
