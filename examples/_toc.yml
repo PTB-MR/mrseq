@@ -4,10 +4,12 @@ chapters:
 - file: imaging.md
   sections:
   - file: radial_flash
+  - file: spiral_flash
 - file: relaxometry.md
   sections:
   - file: t1_inv_rec_gre_single_line
   - file: t1_inv_rec_se_single_line
+  - file: t1_molli_bssfp
   - file: t2_multi_echo_se_single_line
   - file: t2star_multi_echo_flash
   - file: t1rho_se_single_line
