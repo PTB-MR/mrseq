@@ -1,6 +1,7 @@
 """Cardiac MR Fingerprinting sequence with spiral readout."""
 
 from pathlib import Path
+from typing import Literal
 
 import ismrmrd
 import numpy as np
@@ -24,7 +25,7 @@ def t1_t2_spiral_cmrf_kernel(
     min_cardiac_trigger_delay: float,
     fov_xy: float,
     n_readout: int,
-    readout_oversampling: int,
+    readout_oversampling: Literal[1, 2, 4],
     spiral_undersampling: int,
     slice_thickness: float,
     rf_inv_duration: float,
@@ -115,7 +116,7 @@ def t1_t2_spiral_cmrf_kernel(
     n_shots_per_block = flip_angles.size // n_blocks
 
     # create rf dummy pulse (required for some timing calculations)
-    rf_dummy, gz_dummy, gzr_dummy = pp.make_sinc_pulse(  # type: ignore
+    rf_dummy, gz_dummy, gzr_dummy = pp.make_sinc_pulse(
         flip_angle=np.pi,
         duration=rf_duration,
         slice_thickness=slice_thickness,
@@ -146,7 +147,7 @@ def t1_t2_spiral_cmrf_kernel(
 
     # calculate minimum echo time (TE) for sequence header
     min_te = pp.calc_duration(gz_dummy) / 2 + pp.calc_duration(gzr_dummy) + time_to_echo
-    min_te = round_to_raster(min_te, system.grad_raster_time).item()
+    min_te = round_to_raster(min_te, system.grad_raster_time)
 
     # calculate minimum repetition time (TR)
     min_tr = (
@@ -165,9 +166,8 @@ def t1_t2_spiral_cmrf_kernel(
         tr_delay = minimum_time_to_set_label
     else:
         tr_delay = round_to_raster((tr - min_tr + minimum_time_to_set_label), system.grad_raster_time)
-
-    if not tr_delay >= 0:
-        raise ValueError(f'TR must be larger than {min_tr * 1000:.3f} ms. Current value is {tr * 1000:.3f} ms.')
+        if not tr_delay >= 0:
+            raise ValueError(f'TR must be larger than {min_tr * 1000:.3f} ms. Current value is {tr * 1000:.3f} ms.')
 
     # print TE / TR values
     final_tr = min_tr if tr is None else (min_tr - minimum_time_to_set_label) + tr_delay
@@ -280,7 +280,7 @@ def t1_t2_spiral_cmrf_kernel(
             spiral_idx = np.argmin(diff)
 
             # create slice selective rf pulse for current shot
-            rf_n, gz_n, gzr_n = pp.make_sinc_pulse(  # type: ignore
+            rf_n, gz_n, gzr_n = pp.make_sinc_pulse(
                 flip_angle=fa,
                 duration=rf_duration,
                 slice_thickness=slice_thickness,
@@ -384,7 +384,7 @@ def main(
     rf_duration = 0.8e-3  # duration of the rf excitation pulse [s]
     rf_bwt = 8  # bandwidth-time product of rf excitation pulse [Hz*s]
     rf_apodization = 0.5  # apodization factor of rf excitation pulse
-    readout_oversampling = 2
+    readout_oversampling: Literal[1, 2, 4] = 2
 
     # define sequence filename
     filename = f'{Path(__file__).stem}_{fov_xy * 1000:.0f}fov_{n_readout}px_variable_trig_delay'
