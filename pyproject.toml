@@ -123,3 +123,18 @@ skip-magic-trailing-comma = false
 
 [tool.typos.default]
 locale = "en-us"
+
+# MyPy section
+[tool.mypy]
+warn_return_any = false
+check_untyped_defs = true
+warn_no_return = true
+warn_unreachable = true
+exclude = ["docs"]
+enable_error_code = ["ignore-without-code"]
+warn_unused_ignores = true
+
+
+[[tool.mypy.overrides]]
+module = ["ismrmrd.*", "pypulseq.*"]
+ignore_missing_imports = true

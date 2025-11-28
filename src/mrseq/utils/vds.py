@@ -290,10 +290,10 @@ def variable_density_spiral_trajectory(
     sampling_period_os = sampling_period / oversampling_factor
 
     # Initialize angular and radial positions and derivatives
-    angular_position = 0
-    angular_velocity = 0
-    radial_position = 0
-    radial_velocity = 0
+    angular_position = 0.0
+    angular_velocity = 0.0
+    radial_position = 0.0
+    radial_velocity = 0.0
 
     # Initialize lists for storing the trajectory
     angular_positions = [angular_position]
@@ -327,24 +327,24 @@ def variable_density_spiral_trajectory(
     n_points = len(radial_positions)
 
     # Convert lists to numpy arrays with shape (n_points, 1)
-    angular_positions = np.array(angular_positions)[:, np.newaxis]
-    radial_positions = np.array(radial_positions)[:, np.newaxis]
+    angular_positions_arr = np.array(angular_positions)[:, np.newaxis]
+    radial_positions_arr = np.array(radial_positions)[:, np.newaxis]
     time_points = np.arange(n_points)[:, np.newaxis] * sampling_period_os
 
     # Downsample trajectory to original sampling period
     downsample_indices = slice(round(oversampling_factor / 2), n_points, oversampling_factor)
-    radial_positions = radial_positions[downsample_indices]
-    angular_positions = angular_positions[downsample_indices]
+    radial_positions_arr = radial_positions_arr[downsample_indices]
+    angular_positions_arr = angular_positions_arr[downsample_indices]
     time_points = time_points[downsample_indices]
 
     # Adjust length of arrays to be a multiple of 4
-    valid_length = 4 * (len(angular_positions) // 4)
-    radial_positions = radial_positions[:valid_length]
-    angular_positions = angular_positions[:valid_length]
+    valid_length = 4 * (len(angular_positions_arr) // 4)
+    radial_positions_arr = radial_positions_arr[:valid_length]
+    angular_positions_arr = angular_positions_arr[:valid_length]
     time_points = time_points[:valid_length]
 
     # Compute k-space trajectory on the regular time raster
-    k_space_trajectory = radial_positions * np.exp(1j * angular_positions)
+    k_space_trajectory = radial_positions_arr * np.exp(1j * angular_positions_arr)
 
     # Calculate gradient waveform by shifting k-space trajectory
     k_shifted_forward = np.vstack([np.zeros((1, 1), dtype=complex), k_space_trajectory])
@@ -365,6 +365,6 @@ def variable_density_spiral_trajectory(
         grad_waveform.flatten(),
         slew_rate.flatten(),
         time_points.flatten(),
-        radial_positions.flatten(),
-        angular_positions.flatten(),
+        radial_positions_arr.flatten(),
+        angular_positions_arr.flatten(),
     )

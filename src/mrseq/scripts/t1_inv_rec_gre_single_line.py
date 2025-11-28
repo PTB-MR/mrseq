@@ -82,7 +82,7 @@ def t1_inv_rec_gre_single_line_kernel(
     seq = pp.Sequence(system=system)
 
     # create slice selective excitation pulse and gradients
-    rf, gz, gzr = pp.make_sinc_pulse(  # type: ignore
+    rf, gz, gzr = pp.make_sinc_pulse(
         flip_angle=rf_flip_angle / 180 * np.pi,
         duration=rf_duration,
         slice_thickness=slice_thickness,
@@ -123,11 +123,11 @@ def t1_inv_rec_gre_single_line_kernel(
 
     # calculate delay to achieve desired echo time
     if te is None:
-        te_delay = 0
-    elif te > min_te:
-        te_delay = round_to_raster(te - min_te, system.block_duration_raster)
+        te_delay = 0.0
     else:
-        raise ValueError(f'TE must be larger than {min_te * 1000:.3f} ms. Current value is {te * 1000:.3f} ms.')
+        te_delay = round_to_raster(te - min_te, system.block_duration_raster)
+        if te_delay < 0:
+            raise ValueError(f'TE must be larger than {min_te * 1000:.3f} ms. Current value is {te * 1000:.3f} ms.')
 
     print(f'\nMinimum TE: {min_te * 1000:.3f} ms')
 
@@ -211,7 +211,7 @@ def main(
     show_plots: bool = True,
     test_report: bool = True,
     timing_check: bool = True,
-) -> pp.Sequence:
+) -> tuple[pp.Sequence, Path]:
     """Generate a GRE-based inversion recovery sequence with one inversion pulse before every readout.
 
     Parameters
@@ -239,6 +239,13 @@ def main(
         Toggles advanced test report.
     timing_check
         Toggles timing check of the sequence.
+
+    Returns
+    -------
+    seq
+        Sequence object of GRE-based T1 inversion recovery sequence.
+    file_path
+        Path to the sequence file.
     """
     if system is None:
         system = sys_defaults
