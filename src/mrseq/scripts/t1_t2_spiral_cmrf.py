@@ -147,7 +147,7 @@ def t1_t2_spiral_cmrf_kernel(
 
     # calculate minimum echo time (TE) for sequence header
     min_te = pp.calc_duration(gz_dummy) / 2 + pp.calc_duration(gzr_dummy) + time_to_echo
-    min_te = round_to_raster(min_te, system.grad_raster_time)
+    min_te = round_to_raster(min_te.item(), system.grad_raster_time)
 
     # calculate minimum repetition time (TR)
     min_tr = (
