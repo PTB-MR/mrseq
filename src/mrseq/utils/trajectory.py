@@ -1,5 +1,6 @@
 """Basic functionality for trajectory calculation."""
 
+from typing import Any
 from typing import Literal
 
 import numpy as np
@@ -355,7 +356,7 @@ def spiral_acquisition(
     n_spirals: int | None,
     max_pre_duration: float,
     spiral_type: Literal['out', 'in-out'],
-):
+) -> tuple[list[Any], list[Any], Any, np.ndarray, float]:
     """Generate a spiral acquisition sequence.
 
     Parameters

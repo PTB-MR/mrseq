@@ -147,7 +147,7 @@ def t1_t2_spiral_cmrf_kernel(
 
     # calculate minimum echo time (TE) for sequence header
     min_te = pp.calc_duration(gz_dummy) / 2 + pp.calc_duration(gzr_dummy) + time_to_echo
-    min_te = round_to_raster(min_te.item(), system.grad_raster_time)
+    min_te = round_to_raster(min_te, system.grad_raster_time)
 
     # calculate minimum repetition time (TR)
     min_tr = (
@@ -335,7 +335,7 @@ def main(
     t2_prep_echo_times: np.ndarray | None = None,
     tr: float = 10e-3,
     fov_xy: float = 128e-3,
-    spiral_undersampling: int = 6,
+    spiral_undersampling: int = 4,
     n_readout: int = 128,
     slice_thickness: float = 8e-3,
     show_plots: bool = True,
