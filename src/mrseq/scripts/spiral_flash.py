@@ -10,6 +10,7 @@ import pypulseq as pp
 from mrseq.utils import round_to_raster
 from mrseq.utils import spiral_acquisition
 from mrseq.utils import sys_defaults
+from mrseq.utils import write_sequence
 from mrseq.utils.ismrmrd import Fov
 from mrseq.utils.ismrmrd import Limits
 from mrseq.utils.ismrmrd import MatrixSize
@@ -263,6 +264,7 @@ def main(
     show_plots: bool = True,
     test_report: bool = True,
     timing_check: bool = True,
+    v141_compatibility: bool = True,
 ) -> tuple[pp.Sequence, Path]:
     """Generate a spiral FLASH sequence.
 
@@ -296,6 +298,8 @@ def main(
         Toggles advanced test report.
     timing_check
         Toggles timing check of the sequence.
+    v141_compatibility
+        Save the sequence in pulseq v1.4.1 for backwards compatibility.
 
     Returns
     -------
@@ -376,7 +380,7 @@ def main(
 
     # save seq-file to disk
     print(f"\nSaving sequence file '{filename}.seq' into folder '{output_path}'.")
-    seq.write(str(output_path / filename), create_signature=True)
+    write_sequence(seq, str(output_path / filename), create_signature=True, v141_compatibility=v141_compatibility)
 
     if show_plots:
         seq.plot(time_range=(0, 10 * (tr or min_tr)))
