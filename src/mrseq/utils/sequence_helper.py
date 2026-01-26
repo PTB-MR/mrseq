@@ -1,8 +1,11 @@
 """Helper functions for the creation of sequences."""
 
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version
 from typing import Literal
 
 import numpy as np
+import pypulseq as pp
 
 
 def round_to_raster(value: float, raster_time: float, method: Literal['floor', 'round', 'ceil'] = 'round') -> float:
@@ -107,3 +110,53 @@ def find_gx_flat_time_on_adc_raster(
             adc_dwell_time = adc_dwell_time_larger
 
     return adc_dwell_time * n_readout, adc_dwell_time
+
+
+def _parse_version_tuple(v: str) -> tuple[int, ...]:
+    """Parse a version string into a tuple of integers."""
+    v = v.split('+', 1)[0]
+    v = v.split('-', 1)[0]
+    parts: list[int] = []
+    for token in v.split('.'):
+        if token.isdigit():
+            parts.append(int(token))
+        else:
+            digits = ''.join(ch for ch in token if ch.isdigit())
+            parts.append(int(digits) if digits else 0)
+    return tuple(parts)
+
+
+def _pypulseq_version_tuple() -> tuple[int, ...]:
+    """Return the version of PyPulseq as a tuple of integers."""
+    try:
+        return _parse_version_tuple(version('pypulseq'))
+    except PackageNotFoundError:
+        return (0,)
+
+
+def write_sequence(
+    seq: pp.Sequence,
+    filename: str,
+    create_signature: bool = True,
+    v141_compatibility: bool = True,
+    **kwargs,
+):
+    """Write a PyPulseq sequence to a *.seq file.
+
+    Parameters
+    ----------
+    seq
+        PyPulseq sequence object
+    filename
+        Name of the *.seq file
+    create_signature
+        Whether to create a signature in the *.seq file
+    v141_compatibility
+        Whether to use v1.4.1 compatibility mode
+    **kwargs
+        Additional keyword arguments passed to the PyPulseq write function
+    """
+    pypulseq_version = _pypulseq_version_tuple()
+    if pypulseq_version >= (1, 5, 0):
+        return seq.write(filename, create_signature=create_signature, v141_compat=v141_compatibility, **kwargs)
+    return seq.write(filename, create_signature=create_signature, **kwargs)
