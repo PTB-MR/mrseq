@@ -24,6 +24,7 @@ def t2_t2prep_flash_kernel(
     readout_oversampling: float,
     acceleration: int,
     n_fully_sampled_center: int,
+    n_pe_points_per_cardiac_cycle: int | None,
     slice_thickness: float,
     gx_pre_duration: float,
     gx_flat_time: float,
@@ -62,6 +63,9 @@ def t2_t2prep_flash_kernel(
         Uniform undersampling factor along the phase encoding direction
     n_fully_sampled_center
         Number of phsae encoding points in the fully sampled center. This will reduce the overall undersampling factor.
+    n_pe_points_per_cardiac_cycle
+        Number of phase encoding points per cardiac cycle. If None, a single shot image is obtained after each
+        T2-preparation pulse.
     slice_thickness
         Slice thickness of the 2D slice (in meters).
     gx_pre_duration
@@ -132,7 +136,11 @@ def t2_t2prep_flash_kernel(
         acceleration=acceleration,
         n_fully_sampled_center=n_fully_sampled_center,
         sampling_order='low_high',
+        n_phase_encoding_per_shot=n_pe_points_per_cardiac_cycle,
     )
+
+    if n_pe_points_per_cardiac_cycle is None:
+        n_pe_points_per_cardiac_cycle = len(pe_steps)
 
     # create spoiler gradients
     gz_spoil = pp.make_trapezoid(channel='z', system=system, area=gz_spoil_area, duration=gz_spoil_duration)
@@ -183,7 +191,7 @@ def t2_t2prep_flash_kernel(
 
     print(f'\nCurrent echo time = {current_te * 1000:.3f} ms')
     print(f'Current repetition time = {current_tr * 1000:.3f} ms')
-    print(f'Acquisition window per cardiac cycle = {current_tr * len(pe_steps) * 1000:.3f} ms')
+    print(f'Acquisition window per cardiac cycle = {current_tr * n_pe_points_per_cardiac_cycle * 1000:.3f} ms')
 
     # choose initial rf phase offset
     rf_phase = 0.0
@@ -203,86 +211,91 @@ def t2_t2prep_flash_kernel(
     seq.add_block(pp.make_label(label='NOISE', type='SET', value=False))
     seq.add_block(pp.make_delay(system.rf_dead_time))
 
+    n_cycles_per_image = len(pe_steps) // n_pe_points_per_cardiac_cycle
     for t2_idx, t2_prep_echo_time in enumerate(t2_prep_echo_times):
-        if t2_prep_echo_time > 0:
-            # get prep block duration and calculate corresponding trigger delay
-            t2prep_block, prep_dur = add_t2_prep(echo_time=t2_prep_echo_time, system=system)
-            constant_trig_delay = round_to_raster(
-                min_cardiac_trigger_delay - prep_dur - current_te / 2, raster_time=system.block_duration_raster
-            )
-            if constant_trig_delay < 0:
-                raise ValueError('Minimum trigger delay is too short for the selected T2prep timings.')
+        for cardiac_cycle_idx in range(n_cycles_per_image):
+            if t2_prep_echo_time > 0:
+                # get prep block duration and calculate corresponding trigger delay
+                t2prep_block, prep_dur = add_t2_prep(echo_time=t2_prep_echo_time, system=system)
+                constant_trig_delay = round_to_raster(
+                    min_cardiac_trigger_delay - prep_dur - current_te / 2, raster_time=system.block_duration_raster
+                )
+                if constant_trig_delay < 0:
+                    raise ValueError('Minimum trigger delay is too short for the selected T2prep timings.')
 
-            # add trigger and constant part of trigger delay
-            seq.add_block(pp.make_trigger(channel='physio1', duration=constant_trig_delay))
-
-            # add variable part of trigger delay (soft delay)
-            seq.add_block(trig_soft_delay)
-
-            # add all events of T2prep block
-            for idx in t2prep_block.block_events:
-                seq.add_block(t2prep_block.get_block(idx))
-
-        else:
-            constant_trig_delay = round_to_raster(
-                min_cardiac_trigger_delay - current_te / 2, raster_time=system.block_duration_raster
-            )
-            if constant_trig_delay < 0:
-                raise ValueError('Minimum trigger delay is too short for the current echo time.')
-
-            # add trigger and constant part of trigger delay
-            seq.add_block(pp.make_trigger(channel='physio1', duration=constant_trig_delay))
-
-            # add variable part of trigger delay (soft delay)
-            seq.add_block(trig_soft_delay)
-
-        for pe_index_ in pe_steps:
-            # calculate current phase_offset if rf_spoiling is activated
-            if rf_spoiling_phase_increment > 0:
-                rf.phase_offset = rf_phase / 180 * np.pi
-                adc.phase_offset = rf_phase / 180 * np.pi
-
-            # add slice selective excitation pulse
-            seq.add_block(rf, gz)
-
-            # update rf phase offset for the next excitation pulse
-            rf_inc = divmod(rf_inc + rf_spoiling_phase_increment, 360.0)[1]
-            rf_phase = divmod(rf_phase + rf_inc, 360.0)[1]
-
-            # set labels for the next spoke
-            labels = []
-            labels.append(pp.make_label(label='LIN', type='SET', value=int(pe_index_ - np.min(pe_steps))))
-            labels.append(pp.make_label(label='IMA', type='SET', value=pe_index_ in pe_fully_sampled_center))
-            labels.append(pp.make_label(type='SET', label='ECO', value=int(t2_idx)))
-
-            # calculate current phase encoding gradient
-            gy_pre = pp.make_trapezoid(channel='y', area=delta_k * pe_index_, duration=gx_pre_duration, system=system)
-
-            if te is not None:
-                seq.add_block(gzr)
-                seq.add_block(pp.make_delay(te_delay))
-                seq.add_block(gx_pre, gy_pre, *labels)
-            else:
-                seq.add_block(gx_pre, gy_pre, gzr, *labels)
-
-            # add the readout gradient and ADC
-            seq.add_block(gx, adc)
-
-            gy_pre.amplitude = -gy_pre.amplitude
-            seq.add_block(gx_post, gy_pre, gz_spoil)
-
-            # add delay in case TR > min_TR
-            if tr_delay > 0:
-                seq.add_block(pp.make_delay(tr_delay))
-
-        if t2_idx < len(t2_prep_echo_times) - 1:
-            # add delay for magnetization recovery
-            for _ in range(n_recovery_cardiac_cycles):
                 # add trigger and constant part of trigger delay
-                seq.add_block(pp.make_trigger(channel='physio1', duration=min_cardiac_trigger_delay))
+                seq.add_block(pp.make_trigger(channel='physio1', duration=constant_trig_delay))
 
                 # add variable part of trigger delay (soft delay)
                 seq.add_block(trig_soft_delay)
+
+                # add all events of T2prep block
+                for idx in t2prep_block.block_events:
+                    seq.add_block(t2prep_block.get_block(idx))
+
+            else:
+                constant_trig_delay = round_to_raster(
+                    min_cardiac_trigger_delay - current_te / 2, raster_time=system.block_duration_raster
+                )
+                if constant_trig_delay < 0:
+                    raise ValueError('Minimum trigger delay is too short for the current echo time.')
+
+                # add trigger and constant part of trigger delay
+                seq.add_block(pp.make_trigger(channel='physio1', duration=constant_trig_delay))
+
+                # add variable part of trigger delay (soft delay)
+                seq.add_block(trig_soft_delay)
+
+            for shot_idx in range(n_pe_points_per_cardiac_cycle):
+                pe_index_ = pe_steps[shot_idx + n_pe_points_per_cardiac_cycle * cardiac_cycle_idx]
+                # calculate current phase_offset if rf_spoiling is activated
+                if rf_spoiling_phase_increment > 0:
+                    rf.phase_offset = rf_phase / 180 * np.pi
+                    adc.phase_offset = rf_phase / 180 * np.pi
+
+                # add slice selective excitation pulse
+                seq.add_block(rf, gz)
+
+                # update rf phase offset for the next excitation pulse
+                rf_inc = divmod(rf_inc + rf_spoiling_phase_increment, 360.0)[1]
+                rf_phase = divmod(rf_phase + rf_inc, 360.0)[1]
+
+                # set labels for the next spoke
+                labels = []
+                labels.append(pp.make_label(label='LIN', type='SET', value=int(pe_index_ - np.min(pe_steps))))
+                labels.append(pp.make_label(label='IMA', type='SET', value=pe_index_ in pe_fully_sampled_center))
+                labels.append(pp.make_label(type='SET', label='ECO', value=int(t2_idx)))
+
+                # calculate current phase encoding gradient
+                gy_pre = pp.make_trapezoid(
+                    channel='y', area=delta_k * pe_index_, duration=gx_pre_duration, system=system
+                )
+
+                if te is not None:
+                    seq.add_block(gzr)
+                    seq.add_block(pp.make_delay(te_delay))
+                    seq.add_block(gx_pre, gy_pre, *labels)
+                else:
+                    seq.add_block(gx_pre, gy_pre, gzr, *labels)
+
+                # add the readout gradient and ADC
+                seq.add_block(gx, adc)
+
+                gy_pre.amplitude = -gy_pre.amplitude
+                seq.add_block(gx_post, gy_pre, gz_spoil)
+
+                # add delay in case TR > min_TR
+                if tr_delay > 0:
+                    seq.add_block(pp.make_delay(tr_delay))
+
+            if (t2_idx < len(t2_prep_echo_times) - 1) or (cardiac_cycle_idx < n_cycles_per_image - 1):
+                # add delay for magnetization recovery
+                for _ in range(n_recovery_cardiac_cycles):
+                    # add trigger and constant part of trigger delay
+                    seq.add_block(pp.make_trigger(channel='physio1', duration=min_cardiac_trigger_delay))
+
+                    # add variable part of trigger delay (soft delay)
+                    seq.add_block(trig_soft_delay)
 
     return seq, min_te, min_tr
 
@@ -296,6 +309,7 @@ def main(
     n_readout: int = 128,
     acceleration: int = 2,
     n_fully_sampled_center: int = 12,
+    n_pe_points_per_cardiac_cycle: int | None = None,
     slice_thickness: float = 8e-3,
     receiver_bandwidth_per_pixel: float = 800,  # Hz/pixel
     show_plots: bool = True,
@@ -322,6 +336,9 @@ def main(
         Uniform undersampling factor along the phase encoding direction
     n_fully_sampled_center
         Number of phsae encoding points in the fully sampled center. This will reduce the overall undersampling factor.
+    n_pe_points_per_cardiac_cycle
+        Number of phase encoding points per cardiac cycle. If None, a single shot image is obtained after each
+        T2-preparation pulse.
     slice_thickness
         Slice thickness of the 2D slice (in meters).
     receiver_bandwidth_per_pixel
@@ -339,7 +356,7 @@ def main(
     if t2_prep_echo_times is None:
         t2_prep_echo_times = np.asarray([0.0, 0.05, 0.1])
 
-    n_recovery_cardiac_cycles = 3
+    n_recovery_cardiac_cycles = 20
 
     # define settings of rf excitation pulse
     rf_duration = 1.28e-3  # duration of the rf excitation pulse [s]
@@ -381,6 +398,7 @@ def main(
         readout_oversampling=readout_oversampling,
         acceleration=acceleration,
         n_fully_sampled_center=n_fully_sampled_center,
+        n_pe_points_per_cardiac_cycle=n_pe_points_per_cardiac_cycle,
         slice_thickness=slice_thickness,
         gx_pre_duration=gx_pre_duration,
         gx_flat_time=gx_flat_time,
