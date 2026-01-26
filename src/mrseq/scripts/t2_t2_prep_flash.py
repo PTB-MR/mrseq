@@ -360,7 +360,7 @@ def main(
     if t2_prep_echo_times is None:
         t2_prep_echo_times = np.asarray([0.0, 0.05, 0.1])
 
-    n_recovery_cardiac_cycles = 20
+    n_recovery_cardiac_cycles = 3
 
     # define settings of rf excitation pulse
     rf_duration = 1.28e-3  # duration of the rf excitation pulse [s]

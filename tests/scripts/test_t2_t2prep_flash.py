@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from mrseq.scripts.t2_t2_prep_flash import main as create_seq
 
-EXPECTED_DUR = 4.57667  # defined 2025-11-24
+EXPECTED_DUR = 8.17667  # defined 2026-01-26
 
 
 def test_default_seq_duration(system_defaults):
