@@ -1,7 +1,10 @@
 """Tests for Gold standard SE-based T1rho mapping sequence."""
 
+import numpy as np
 import pytest
 from mrseq.scripts.t1rho_se_single_line import main as create_seq
+from mrseq.utils.system_defaults import sys_a
+from mrseq.utils.system_defaults import sys_b
 
 EXPECTED_DUR = 3072.000000  # defined 2025-02-20
 
@@ -11,6 +14,14 @@ def test_default_seq_duration(system_defaults):
     seq, _ = create_seq(system=system_defaults, show_plots=False)
     duration = seq.duration()[0]
     assert duration == pytest.approx(EXPECTED_DUR)
+
+
+@pytest.mark.parametrize('system', [sys_a, sys_b])
+def test_seq_duration(system):
+    """Test system dependance of sequence."""
+    seq, _ = create_seq(system=system, show_plots=False)
+    duration = seq.duration()[0]
+    assert np.abs(duration - EXPECTED_DUR) / EXPECTED_DUR < 0.05
 
 
 def test_seq_creation_error_on_short_te(system_defaults):

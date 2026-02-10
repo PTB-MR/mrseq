@@ -3,6 +3,7 @@
 import numpy as np
 import pypulseq as pp
 
+from mrseq.utils import round_to_raster
 from mrseq.utils import sys_defaults
 
 
@@ -169,6 +170,7 @@ def add_t2_prep(
         - system.rf_dead_time  # dead time of 180° pulse in refocusing block
         - duration_180 / 2  # half duration of 180° pulse in refocusing block
     )
+    tau1 = round_to_raster(tau1, system.block_duration_raster)
 
     if tau1 < 0:
         raise ValueError(f'Desired echo time ({echo_time * 1000:.2f} ms) is too short to create the T2 prep block.')
@@ -190,6 +192,7 @@ def add_t2_prep(
         - time_since_refocusing  # time since refocusing in 1st refocusing block
         - (refoc_dur - time_since_refocusing)  # time until refocusing point in 2nd block
     )
+    tau2 = round_to_raster(tau2, system.block_duration_raster)
 
     if tau2 < 0:
         raise ValueError(f'Desired echo time ({echo_time * 1000:.2f} ms) is too short to create the T2 prep block.')
@@ -234,6 +237,7 @@ def add_t2_prep(
         - system.rf_dead_time  # dead time of 270° pulse in tip-up block
         - duration_180 / 2 * 3 / 2  # half duration of 270° pulse
     )
+    tau3 = round_to_raster(tau3, system.block_duration_raster)
 
     if tau3 < 0:
         raise ValueError(f'Desired echo time ({echo_time * 1000:.2f} ms) is too short to create the T2 prep block.')
