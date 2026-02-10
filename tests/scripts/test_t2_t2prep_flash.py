@@ -2,7 +2,7 @@
 
 import numpy as np
 import pytest
-from mrseq.scripts.t2_t2_prep_flash import main as create_seq
+from mrseq.scripts.t2_t2prep_flash import main as create_seq
 
 EXPECTED_DUR = 8.17667  # defined 2026-01-26
 
