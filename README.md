@@ -5,7 +5,7 @@
 
 # MRseq - MR pulse sequences using Pulseq
 
-MRseq is a collection of several useful functions, kernels and scripts for creating vendor-agnostic MR pulse sequences using the open-source Pulseq format.
+`MRseq` is a collection of several useful functions, kernels and scripts for creating vendor-agnostic MR pulse sequences using the open-source Pulseq format.
 
 - **Source code:** <https://github.com/PTB-MR/mrseq>
 - **Bug reports:** <https://github.com/PTB-MR/mrseq/issues>
@@ -19,7 +19,7 @@ We are looking forward to your contributions via Pull-Requests.
 
 #### Prerequisites for Windows
 
-Before installing MRseq with development dependencies on Windows, you need:
+Before installing `MRseq` with development dependencies on Windows, you need:
 
 1. **Visual Studio Build Tools**: The MRzeroCore dependency requires Rust compilation with Microsoft Visual C++ linker
    - Download "Build Tools for Visual Studio 2022" from https://visualstudio.microsoft.com/downloads/
@@ -31,7 +31,17 @@ Before installing MRseq with development dependencies on Windows, you need:
 
 #### Installation steps
 
-1. Clone the MRseq repository
+1. Clone the `MRseq` repository
 2. Create/select a python environment
-3. Install "MRseq" in editable mode including test dependencies: ``` pip install -e ".[dev]" ```
+3. Install `MRseq` in editable mode including test dependencies: ``` pip install -e ".[dev]" ```
 4. Setup pre-commit hook: ``` pre-commit install ```
+
+
+### Licensing and Dependencies
+
+The core source code of `MRseq` is licensed under the **Apache-2.0 license**. 
+
+For quality control and demonstration purposes, the notebooks in the `examples/` directories utilize [MRZero](https://github.com/MRsources/MRzero-Core) which is AGPL-licensed. The notebooks in the `examples/` folder should be treated as **AGPLv3**. 
+
+**Important for Commercial Users:**
+The AGPL dependency is listed only as an optional dev dependency. Installing this package via `pip install mrseq` **does not** install the AGPL library. Your usage of the core library remains subject to the permissive Apache-2.0 terms, unaffected by the licensing of the test suite or examples.
