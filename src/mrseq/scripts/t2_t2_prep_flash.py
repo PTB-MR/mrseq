@@ -46,11 +46,11 @@ def t2_t2prep_flash_kernel(
     te
         Desired echo time (TE) (in seconds). Minimum echo time is used if set to None.
     tr
-        Desired repetition time (TR) (in seconds).
+        Desired repetition time (TR) (in seconds). Minimum repetition time is used if set to None.
     t2_prep_echo_times
-        Echo times of T2-preparation pulse
+        Echo times of T2-preparation pulse (in seconds).
     n_recovery_cardiac_cycles
-        Number of cardiac cycles for magnetization recovery after each T2-pepared acquisition.
+        Number of cardiac cycles for magnetization recovery after each T2-prepared acquisition.
     min_cardiac_trigger_delay
         Minimum delay after cardiac trigger (in seconds).
         The total trigger delay is implemented as a soft delay and can be chosen by the user in the UI.
@@ -61,41 +61,42 @@ def t2_t2prep_flash_kernel(
     readout_oversampling
         Readout oversampling factor, commonly 2. This reduces aliasing artifacts.
     acceleration
-        Uniform undersampling factor along the phase encoding direction
+        Uniform undersampling factor along the phase encoding direction.
     n_fully_sampled_center
-        Number of phsae encoding points in the fully sampled center. This will reduce the overall undersampling factor.
+        Number of phase encoding points in the fully sampled center.
+        Larger values will reduce the overall undersampling factor.
     n_pe_points_per_cardiac_cycle
-        Number of phase encoding points per cardiac cycle. If None, a single shot image is obtained after each
-        T2-preparation pulse.
+        Number of phase encoding points per cardiac cycle.
+        If None, a single shot image is obtained after each T2-preparation pulse.
     slice_thickness
         Slice thickness of the 2D slice (in meters).
     gx_pre_duration
-        Duration of readout pre-winder gradient (in seconds)
+        Duration of readout pre-winder gradient (in seconds).
     gx_flat_time
-        Flat time of readout gradient (in seconds)
+        Flat time of readout gradient (in seconds).
     rf_duration
-        Duration of the rf excitation pulse (in seconds)
+        Duration of the rf excitation pulse (in seconds).
     rf_flip_angle
-        Flip angle of rf excitation pulse (in degrees)
+        Flip angle of rf excitation pulse (in degrees).
     rf_bwt
-        Bandwidth-time product of rf excitation pulse (Hz * seconds)
+        Bandwidth-time product of rf excitation pulse (Hz * seconds).
     rf_apodization
-        Apodization factor of rf excitation pulse
+        Apodization factor of rf excitation pulse.
     rf_spoiling_phase_increment
-        RF spoiling phase increment (in degrees). Set to 0 for no RF spoiling.
+        RF spoiling phase increment (in degrees). Set to 0 to disable RF spoiling.
     gz_spoil_duration
-        Duration of spoiler gradient (in seconds)
+        Duration of spoiler gradient (in seconds).
     gz_spoil_area
-        Area of spoiler gradient (in mT/m * s)
+        Area of spoiler gradient (in 1/meters = Hz/m * s).
 
     Returns
     -------
     seq
         PyPulseq Sequence object
     min_te
-        Shortest possible echo time.
+        Shortest possible echo time
     min_tr
-        Shortest possible echo time.
+        Shortest possible repetition time
 
     """
     if readout_oversampling < 1:
@@ -317,7 +318,7 @@ def main(
     test_report: bool = True,
     timing_check: bool = True,
     v141_compatibility: bool = True,
-) -> pp.Sequence:
+) -> tuple[pp.Sequence, Path]:
     """Generate a FLASH sequence with T2-preparation pulses.
 
     Parameters
@@ -329,18 +330,19 @@ def main(
     tr
         Desired repetition time (TR) (in seconds). Minimum repetition time is used if set to None.
     t2_prep_echo_times
-        Echo times of T2-preparation pulse. If None, default values of [0, 50, 100]ms are used.
+        Echo times of T2-preparation pulse. If None, default values of [0, 50, 100] ms are used.
     fov_xy
         Field of view in x and y direction (in meters).
     n_readout
         Number of frequency encoding steps.
     acceleration
-        Uniform undersampling factor along the phase encoding direction
+        Uniform undersampling factor along the phase encoding direction.
     n_fully_sampled_center
-        Number of phsae encoding points in the fully sampled center. This will reduce the overall undersampling factor.
+        Number of phase encoding points in the fully sampled center.
+        Larger values will reduce the overall undersampling factor.
     n_pe_points_per_cardiac_cycle
-        Number of phase encoding points per cardiac cycle. If None, a single shot image is obtained after each
-        T2-preparation pulse.
+        Number of phase encoding points per cardiac cycle.
+        If None, a single shot image is obtained after each T2-preparation pulse.
     slice_thickness
         Slice thickness of the 2D slice (in meters).
     receiver_bandwidth_per_pixel
@@ -353,6 +355,13 @@ def main(
         Toggles timing check of the sequence.
     v141_compatibility
         Save the sequence in pulseq v1.4.1 for backwards compatibility.
+
+    Returns
+    -------
+    seq
+        PyPulseq Sequence object.
+    file_path
+        Path to the sequence file without suffix (append '.seq' for the actual file).
     """
     if system is None:
         system = sys_defaults
@@ -424,7 +433,7 @@ def main(
             print('\nTiming check failed! Error listing follows\n')
             print(error_report)
 
-    # show advanced rest report
+    # show advanced test report
     if test_report:
         print('\nCreating advanced test report...')
         print(seq.test_report())
