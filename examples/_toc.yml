@@ -11,6 +11,7 @@ chapters:
   - file: t1_inv_rec_se_single_line
   - file: t1_molli_bssfp
   - file: t2_multi_echo_se_single_line
+  - file: t2_t2prep_flash
   - file: t2star_multi_echo_flash
   - file: t1rho_se_single_line
   - file: t1_t2_spiral_cmrf

@@ -141,6 +141,7 @@ def t1_t2_spiral_cmrf_kernel(
         spiral_type='out',
     )
     delta_array = 2 * np.pi / len(gx) * np.arange(len(gx))  # angle difference between subsequent spirals
+    max_spiral_duration = max(pp.calc_duration(gx, gy) for gx, gy in zip(gx, gy, strict=True))
 
     # create gradient spoiler
     gz_spoil_area = 4 / slice_thickness - gz_dummy.area / 2
@@ -154,7 +155,7 @@ def t1_t2_spiral_cmrf_kernel(
     min_tr = (
         pp.calc_duration(rf_dummy, gz_dummy)  # rf pulse
         + pp.calc_duration(gzr_dummy)  # slice selection re-phasing gradient
-        + pp.calc_duration(gx[0])  # readout
+        + max_spiral_duration  # readout
         + pp.calc_duration(gz_spoil)  # gz_spoil durations
         + minimum_time_to_set_label  # min time to set labels
     )
@@ -300,7 +301,7 @@ def t1_t2_spiral_cmrf_kernel(
             seq.add_block(gzr_n)
 
             # add readout gradients and ADC
-            seq.add_block(gx[spiral_idx], gy[spiral_idx], adc)
+            seq.add_block(gx[spiral_idx], gy[spiral_idx], adc, pp.make_delay(max_spiral_duration))
 
             # add spoiler
             seq.add_block(gz_spoil)

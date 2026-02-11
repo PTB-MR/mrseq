@@ -121,6 +121,7 @@ def spiral_flash_kernel(
         max_pre_duration=gx_pre_duration,
         spiral_type='out',
     )
+    max_spiral_duration = max(pp.calc_duration(gx, gy) for gx, gy in zip(gx, gy, strict=True))
 
     # create spoiler gradients
     gz_spoil = pp.make_trapezoid(channel='z', system=system, area=gz_spoil_area, duration=gz_spoil_duration)
@@ -144,7 +145,7 @@ def spiral_flash_kernel(
     min_tr = (
         pp.calc_duration(gz)  # rf pulse
         + pp.calc_duration(gzr)  # slice rewinder
-        + pp.calc_duration(gx[0], gy[0])  # readout gradient
+        + max_spiral_duration  # readout gradient
         + pp.calc_duration(gz_spoil)  # gradient spoiler or readout-re-winder
     )
 
@@ -220,9 +221,9 @@ def spiral_flash_kernel(
                 labels = []
                 labels.append(pp.make_label(label='LIN', type='SET', value=spiral_))
                 labels.append(pp.make_label(label='SLC', type='SET', value=slice_))
-                seq.add_block(gx[spiral_], gy[spiral_], adc, *labels)
+                seq.add_block(gx[spiral_], gy[spiral_], adc, pp.make_delay(max_spiral_duration), *labels)
             else:
-                seq.add_block(pp.make_delay(pp.calc_duration(gx[0], gy[0], adc)))
+                seq.add_block(pp.make_delay(max_spiral_duration))
             seq.add_block(gz_spoil)
 
             # add delay in case TR > min_TR
