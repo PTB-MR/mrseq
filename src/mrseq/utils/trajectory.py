@@ -7,10 +7,10 @@ from typing import Literal
 import numpy as np
 import pypulseq as pp
 
-from mrseq.utils import find_gx_flat_time_on_adc_raster
-from mrseq.utils import round_to_raster
-from mrseq.utils import sys_defaults
-from mrseq.utils import variable_density_spiral_trajectory
+from mrseq.utils.sequence_helper import find_gx_flat_time_on_adc_raster
+from mrseq.utils.sequence_helper import round_to_raster
+from mrseq.utils.system_defaults import sys_defaults
+from mrseq.utils.vds import variable_density_spiral_trajectory
 
 
 def cartesian_phase_encoding(
@@ -63,10 +63,10 @@ def cartesian_phase_encoding(
     if n_phase_encoding_per_shot and sampling_order != 'random':
         kpe_extended = np.arange(-n_phase_encoding, n_phase_encoding)
         kpe_extended = kpe_extended[np.argsort(np.abs(kpe_extended), kind='stable')]
-        idx = 0
+        kidx = 0
         while np.mod(len(kpe), n_phase_encoding_per_shot) > 0:
-            kpe = np.unique(np.concatenate((kpe, (kpe_extended[idx],))))
-            idx += 1
+            kpe = np.unique(np.concatenate((kpe, (kpe_extended[kidx],))))
+            kidx += 1
 
     # Different temporal orders of phase encoding points
     if sampling_order == 'random':
@@ -78,11 +78,11 @@ def cartesian_phase_encoding(
     elif sampling_order == 'linear':
         kpe = np.sort(kpe)
     elif sampling_order == 'low_high':
-        sort_idx = np.argsort(np.abs(kpe), kind='stable')
-        kpe = kpe[sort_idx]
+        idx = np.argsort(np.abs(kpe), kind='stable')
+        kpe = kpe[idx]
     elif sampling_order == 'high_low':
-        sort_idx = np.argsort(-np.abs(kpe), kind='stable')
-        kpe = kpe[sort_idx]
+        idx = np.argsort(-np.abs(kpe), kind='stable')
+        kpe = kpe[idx]
     else:
         raise ValueError(f'sampling order {sampling_order} not supported.')
 
@@ -205,16 +205,15 @@ class MultiEchoAcquisition:
 
         min_delta_te = pp.calc_duration(self._gx) + pp.calc_duration(self._gx_between)
         if delta_te is None:
-            self._te_delay = 0.0
+            self._delta_te_delay = 0.0
         else:
-            self._te_delay = round_to_raster(delta_te - min_delta_te, self._system.block_duration_raster)
-            if not self._te_delay >= 0:
+            self._delta_te_delay = round_to_raster(delta_te - min_delta_te, self._system.block_duration_raster)
+            if self._delta_te_delay < 0:
                 raise ValueError(
-                    f'Delta TE must be larger than {min_delta_te * 1000:.2f} ms. '
-                    f'Current value is {delta_te * 1000:.2f} ms.'
+                    f'TE must be larger than {min_delta_te * 1000:.3f} ms. Current value is {delta_te * 1000:.3f} ms.'
                 )
 
-    def add_to_seq(self, seq: pp.Sequence, n_echoes: int) -> tuple[pp.Sequence, list[float]]:
+    def add_to_seq(self, seq: pp.Sequence, n_echoes: int, polarity: Literal['positive', 'negative'] = 'positive'):
         """Add all gradients and adc to sequence.
 
         Parameters
@@ -223,6 +222,8 @@ class MultiEchoAcquisition:
             PyPulseq Sequence object.
         n_echoes
             Number of echoes
+        polarity
+            Polarity of first readout gradient
 
         Returns
         -------
@@ -232,17 +233,19 @@ class MultiEchoAcquisition:
             Time from beginning of sequence to echoes.
         """
         # readout pre-winder
-        seq.add_block(self._gx_pre)
+        seq.add_block(self._gx_pre if polarity == 'positive' else pp.scale_grad(self._gx_pre, -1))
 
         # add readout gradients and ADCs
-        seq, time_to_echoes = self.add_to_seq_without_pre_post_gradient(seq, n_echoes)
+        seq, time_to_echoes = self.add_to_seq_without_pre_post_gradient(seq, n_echoes, polarity)
 
         # readout re-winder
-        seq.add_block(self._gx_post)
+        seq.add_block(self._gx_post if polarity == 'positive' else pp.scale_grad(self._gx_post, -1))
 
         return seq, time_to_echoes
 
-    def add_to_seq_without_pre_post_gradient(self, seq: pp.Sequence, n_echoes: int) -> tuple[pp.Sequence, list[float]]:
+    def add_to_seq_without_pre_post_gradient(
+        self, seq: pp.Sequence, n_echoes: int, polarity: Literal['positive', 'negative'] = 'positive'
+    ):
         """Add readout gradients without pre- and re-winder gradients.
 
         Often the pre- and re-winder gradients are played out at the same time as phase encoding gradients or spoiler
@@ -254,6 +257,8 @@ class MultiEchoAcquisition:
             PyPulseq Sequence object.
         n_echoes
             Number of echoes
+        polarity
+            Polarity of first readout gradient
 
         Returns
         -------
@@ -266,9 +271,8 @@ class MultiEchoAcquisition:
         time_to_echoes = []
         for echo_ in range(n_echoes):
             start_of_current_gx = sum(seq.block_durations.values())
-            gx_sign = (-1) ** echo_
+            gx_sign = (-1) ** echo_ if polarity == 'positive' else (-1) ** (echo_ + 1)
             labels = []
-            labels.append(pp.make_label(type='SET', label='REV', value=gx_sign == -1))
             labels.append(pp.make_label(label='REV', type='SET', value=gx_sign == -1))
             labels.append(pp.make_label(label='ECO', type='SET', value=echo_))
             seq.add_block(pp.scale_grad(self._gx, gx_sign), self._adc, *labels)
@@ -277,8 +281,8 @@ class MultiEchoAcquisition:
             )
             start_of_current_gx = sum(seq.block_durations.values())
             if echo_ < n_echoes - 1:
-                if self._te_delay > 0:
-                    seq.add_block(pp.make_delay(self._te_delay))
+                if self._delta_te_delay > 0:
+                    seq.add_block(pp.make_delay(self._delta_te_delay))
                 seq.add_block(pp.scale_grad(self._gx_between, -gx_sign))
 
         return seq, time_to_echoes
