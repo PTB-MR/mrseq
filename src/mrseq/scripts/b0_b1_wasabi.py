@@ -5,6 +5,8 @@ from pathlib import Path
 import numpy as np
 import pypulseq as pp
 
+from mrseq.utils import find_gx_flat_time_on_adc_raster
+from mrseq.utils import round_to_raster
 from mrseq.utils import sys_defaults
 from mrseq.utils import write_sequence
 from mrseq.utils.constants import GYROMAGNETIC_RATIO_PROTON
@@ -19,6 +21,7 @@ def wasabi_gre_centric_kernel(
     t_recovery_norm: float,
     fov_xy: float,
     n_readout: int,
+    readout_oversampling: float,
     n_phase_encoding: int,
     slice_thickness: float,
     rf_prep_duration: float,
@@ -48,6 +51,8 @@ def wasabi_gre_centric_kernel(
         Field of view in x and y direction (in meters).
     n_readout
         Number of frequency encoding steps.
+    readout_oversampling
+        Readout oversampling factor, commonly 2. This reduces aliasing artifacts.
     n_phase_encoding
         Number of phase encoding steps.
     slice_thickness
@@ -76,6 +81,9 @@ def wasabi_gre_centric_kernel(
     """
     # create PyPulseq Sequence object and set system limits
     seq = pp.Sequence(system=system)
+
+    if readout_oversampling < 1:
+        raise ValueError('Readout oversampling factor must be >= 1.')
 
     # add normalization offset to beginning of frequency offsets if specified
     if norm_offset is not None:
@@ -112,18 +120,23 @@ def wasabi_gre_centric_kernel(
     )
 
     # create readout gradient and ADC
-    delta_k = 1 / fov_xy
+    delta_k = 1 / (fov_xy * readout_oversampling)
+    n_readout_with_oversampling = int(n_readout * readout_oversampling)
     gx = pp.make_trapezoid(
-        channel='x', flat_area=n_readout * delta_k, flat_time=adc_dwell_time * n_readout, system=system
+        channel='x',
+        flat_area=n_readout_with_oversampling * delta_k,
+        flat_time=n_readout_with_oversampling * adc_dwell_time,
+        system=system,
     )
-    adc = pp.make_adc(num_samples=n_readout, duration=gx.flat_time, delay=gx.rise_time, system=system)
+    n_readout_with_oversampling = n_readout_with_oversampling + np.mod(n_readout_with_oversampling, 2)  # make even
+    adc = pp.make_adc(num_samples=n_readout_with_oversampling, duration=gx.flat_time, delay=gx.rise_time, system=system)
 
-    # create frequency encoding pre-winder gradient
+    # create frequency encoding pre- and re-winder gradient
     gx_pre = pp.make_trapezoid(channel='x', area=-gx.area / 2 - delta_k / 2, system=system)
     gx_post = pp.make_trapezoid(channel='x', area=-gx.area / 2 + delta_k / 2, system=system)
-
-    # calculate gradient areas for (linear) phase encoding direction
-    k0_center_id = np.where((np.arange(n_readout) - n_readout / 2) * delta_k == 0)[0][0]
+    k0_center_id = np.where((np.arange(n_readout_with_oversampling) - n_readout_with_oversampling / 2) * delta_k == 0)[
+        0
+    ][0]
 
     # create readout spoiler gradient
     gz_spoil = pp.make_trapezoid(channel='z', area=4 / slice_thickness, system=system)
@@ -211,6 +224,7 @@ def wasabi_gre_centric_kernel(
     seq.set_definition('TE', min_te)
     seq.set_definition('TR', min_tr)
     seq.set_definition('frequency_offsets', frequency_offsets.tolist())
+    seq.set_definition('ReadoutOversamplingFactor', readout_oversampling)
 
     return seq
 
@@ -225,14 +239,7 @@ def main(
     n_readout: int = 128,
     n_phase_encoding: int = 128,
     slice_thickness: float = 8e-3,
-    rf_prep_duration: float = 5e-3,
-    rf_prep_amplitude: float = 3.75,
-    rf_duration: float = 1.28e-3,
-    rf_flip_angle: float = 10.0,
-    rf_bwt: float = 4.0,
-    rf_apodization: float = 0.5,
-    rf_spoiling_inc: float = 117.0,
-    adc_dwell_time: float = 1e-5,
+    receiver_bandwidth_per_pixel: float = 1000,  # Hz/pixel
     show_plots: bool = True,
     test_report: bool = True,
     timing_check: bool = True,
@@ -259,22 +266,8 @@ def main(
         Number of phase encoding steps.
     slice_thickness
         Slice thickness of the 2D slice (in meters).
-    rf_prep_duration
-        Duration of WASABI block pulse (in seconds)
-    rf_prep_amplitude
-        Amplitude of WASABI block pulse (in µT)
-    rf_duration
-        Duration of the rf excitation pulse (in seconds)
-    rf_flip_angle
-        Flip angle of rf excitation pulse (in degrees)
-    rf_bwt
-        Bandwidth-time product of rf excitation pulse (Hz * seconds)
-    rf_apodization
-        Apodization factor of rf excitation pulse
-    rf_spoiling_inc
-        Phase increment used for RF spoiling. Set to 0 to disable RF spoiling.
-    adc_dwell_time
-        ADC dwell time (in seconds).
+    receiver_bandwidth_per_pixel
+        Desired receiver bandwidth per pixel (in Hz/pixel). This is used to calculate the readout duration.
     show_plots
         Toggles sequence plot.
     test_report
@@ -295,6 +288,27 @@ def main(
     if frequency_offsets is None:
         frequency_offsets = np.linspace(-240, 240, 31)
 
+    # define settings of rf excitation pulse
+    rf_duration = 1.28e-3  # duration of the rf excitation pulse [s]
+    rf_flip_angle = 10.0  # flip angle of rf excitation pulse [°]
+    rf_bwt = 4  # bandwidth-time product of rf excitation pulse [Hz*s]
+    rf_apodization = 0.5  # apodization factor of rf excitation pulse
+    readout_oversampling = 2  # readout oversampling factor, commonly 2. This reduces aliasing artifacts.
+    rf_spoiling_inc = 117  # RF spoiling phase increment [°]. Set to 0 for no RF spoiling.
+
+    # define ADC and gradient timing
+    n_readout_with_oversampling = int(n_readout * readout_oversampling)
+    adc_dwell_time = round_to_raster(
+        1.0 / (receiver_bandwidth_per_pixel * n_readout_with_oversampling), system.adc_raster_time
+    )
+    _, adc_dwell_time = find_gx_flat_time_on_adc_raster(
+        n_readout_with_oversampling, adc_dwell_time, system.grad_raster_time, system.adc_raster_time
+    )
+
+    # WASABI block pulse
+    rf_prep_duration: float = 5e-3
+    rf_prep_amplitude: float = 3.75
+
     seq = wasabi_gre_centric_kernel(
         system=system,
         frequency_offsets=frequency_offsets,
@@ -303,6 +317,7 @@ def main(
         t_recovery_norm=t_recovery_norm,
         fov_xy=fov_xy,
         n_readout=n_readout,
+        readout_oversampling=readout_oversampling,
         n_phase_encoding=n_phase_encoding,
         slice_thickness=slice_thickness,
         rf_prep_duration=rf_prep_duration,
