@@ -15,4 +15,7 @@ chapters:
   - file: t2star_multi_echo_flash
   - file: t1rho_se_single_line
   - file: t1_t2_spiral_cmrf
+- file: system.md
+  sections:
+  - file: b0_b1_wasabi
 
