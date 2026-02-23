@@ -13,6 +13,7 @@ Available examples are:
 - [T1 mapping using Modified Look-Locker Inversion recovery (MOLLI)](t1_molli_bssfp.ipynb)
 - [T1 and T2 mapping using a spiral cardiac MR Fingerprinting sequence](t1_t2_spiral_cmrf.ipynb)
 - [T2 mapping using a multi-echo spin echo readout](t2_multi_echo_se_single_line.ipynb)
+- [T2 mapping using a FLASH sequence with T2-preparation pulses](t2_t2prep_flash.ipynb)
 - [T2* mapping using a multi-echo FLASH sequence](t2star_multi_echo_flash.ipynb)
 - [T1rho mapping using a spin-lock preparation pulse and a single line spin echo readout](t1rho_se_single_line.ipynb)
 
