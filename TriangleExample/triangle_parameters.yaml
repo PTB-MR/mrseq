@@ -1,0 +1,56 @@
+---
+# Scanner Parameters:
+# Gradient Raster Time:
+dwell_time : 0.00001 
+# Maximum Slew Rate:
+slew_rate : 150 # in [T/m/s]
+# Maximum Gradient Amplitude in [T/m] 
+max_grad : 0.03 
+#
+# Sequence Parameters:
+GAMMA : 267515315.1 #e8
+# Number of averages:
+N_AVG : 3
+# Duration of the Scanner ADC in [sec]
+adc_duration : 0.06 
+SLICE_THICKNESS : 0.0015 # in [m]
+SLICE_POS : [0.04] # in [m]
+# For the "Duyn method": the sign before the gradient
+# [-1,0] means the gradient is firstly played inverse, then the same slice is selected but without a gradient
+enumerate_coeff : [-1, 0]
+TR : 1 # Repetition time in [sec]
+ec_delay : 0.001 # Eddy Current delay in [sec]
+RISE_TIMES : [0.00005, 0.00006, 0.00007, 0.00008, 0.00009, 0.0001, 0.00011, 0.00012, 0.00013, 0.00014, 0.00015, 0.00016]  # Rise times for the different triangles, in [sec] 
+# Order of axis:
+# Change the order to change axis order, can even do xyy to double y's and leave out z
+GRAD : ['x', 'y', 'z'] 
+#
+# SINC Parameters
+RF_PHI : 90 # Flip angle
+RF_DUR : 0.0084 # Duration of the pulse T, in [sec] 8.4e-3
+RF_BWT_PROD : 4 # T*f,  "quality" of slice profile,
+apodization : 0.5 # Constant for apodization
+#
+# System Parameters
+rf_ringdown_time : 0.00003 #30e-6
+rf_dead_time : 0.0001 #100e-6
+adc_dead_time : 0.00001 # By how much to pad the ADC duration with, in [sec]
+#
+
+
+
+
+
+
+
+
+
+# No need to touch the MFC parameters, they only contribute a small delay in the seq (grad_free)
+# MFC Parameters
+grad_free : 0.0005 # Duration of gradient-free period after trigger signal in [sec]
+trig_duration : 0.00001 # Duration of trigger RF signal in [sec]
+cam_acq_duration : 0.07 # How long the MFC will acquire data for after the trigger in [sec]
+cam_interleave_tr : 0.4 # "Interleave" duration, unimportant but don't touch
+cam_acq_delay : 0 # Acquisiton delay of the MFC in [sec]
+cam_nr_sync_dyn : 0 # no idea (for now)
+#
