@@ -51,6 +51,6 @@ grad_free : 0.0005 # Duration of gradient-free period after trigger signal in [s
 trig_duration : 0.00001 # Duration of trigger RF signal in [sec]
 cam_acq_duration : 0.07 # How long the MFC will acquire data for after the trigger in [sec]
 cam_interleave_tr : 0.4 # "Interleave" duration, unimportant but don't touch
-cam_acq_delay : 0 # Acquisiton delay of the MFC in [sec]
+cam_acq_delay : 0 # Acquisition delay of the MFC in [sec]
 cam_nr_sync_dyn : 0 # no idea (for now)
 #
