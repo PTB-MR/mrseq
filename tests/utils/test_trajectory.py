@@ -64,6 +64,14 @@ def test_cartesian_phase_encoding_integer_shots(
     assert np.mod(len(pe), n_phase_encoding_per_shot) == 0
 
 
+def test_cartesian_phase_encoding_warning_fully_sampled_center():
+    """Test if warning is raised for a fully sampled center which is too large."""
+    with pytest.raises(Warning, match='Number of phase encoding steps in the fully sampled center will be reduced'):
+        cartesian_phase_encoding(
+            n_phase_encoding=10, acceleration=1, sampling_order='linear', n_fully_sampled_center=12
+        )
+
+
 def test_multi_gradient_echo(system_defaults):
     """Test multi-echo gradient echo readout as part of a simple sequence."""
     seq = pp.Sequence(system=system_defaults)
@@ -148,6 +156,7 @@ def test_spiral_acquisition(
 ):
     """Test spiral trajectories for different parameter combinations."""
     g_pre_duration = 2e-3  # make this duration long to work for all combinations
+    system_defaults.adc_dead_time = 100e-6  # make this longer to ensure it impacts the timing
 
     gx, gy, adc, trajectory, time_to_echo = spiral_acquisition(
         system_defaults,

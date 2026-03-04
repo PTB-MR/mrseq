@@ -1,5 +1,6 @@
 """Basic functionality for trajectory calculation."""
 
+import warnings
 from typing import Any
 from typing import Literal
 
@@ -35,6 +36,14 @@ def cartesian_phase_encoding(
         used to ensure that all phase encoding points can be acquired in an integer number of shots. If None, this
         parameter is ignored, i.e. equal to n_phase_encoding_per_shot = 1
     """
+    if n_fully_sampled_center > n_phase_encoding:
+        warnings.warn(
+            'Number of phase encoding steps in the fully sampled center will be reduced to the total number of phase '
+            + 'encoding steps.',
+            stacklevel=2,
+        )
+        n_fully_sampled_center = n_phase_encoding
+
     if sampling_order == 'random':
         # Linear order of a fully sampled kpe dimension. Undersampling is done later.
         kpe = np.arange(0, n_phase_encoding)
@@ -493,7 +502,7 @@ def spiral_acquisition(
             gy_pre[i].delay = max_pre_duration - gy_pre[i].shape_dur
             gx_pre[i].delay = max_pre_duration - gx_pre[i].shape_dur
     else:
-        max_pre_duration = 0.0
+        max_pre_duration = adc.delay
 
     def combine_gradients(*grad_objects, channel):
         grad_list = [grad for grad in grad_objects if grad is not None]  # Remove None
