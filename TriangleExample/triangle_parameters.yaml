@@ -3,7 +3,7 @@
 # Gradient Raster Time:
 dwell_time : 0.00001 
 # Maximum Slew Rate:
-slew_rate : 150 # in [T/m/s]
+slew_rate : 120 # in [T/m/s]
 # Maximum Gradient Amplitude in [T/m] 
 max_grad : 0.03 
 #

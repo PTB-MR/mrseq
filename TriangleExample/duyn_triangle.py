@@ -15,7 +15,7 @@ main_dir = 'TriangleExample/'
 yaml_dir = 'TriangleExample/triangle_parameters.yaml'
 
 # Add a custom name to the file to differentiate between measurements
-add = 'Versuch_1'
+add = 'Versuch_2'
 
 # Every measurement with a new name gets saved as in a folder with a date stamp
 output_path = main_dir + f'/{time.strftime("%Y%m%d")}_' + str(add)
