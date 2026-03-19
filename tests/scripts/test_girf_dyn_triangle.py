@@ -3,7 +3,7 @@
 import pytest
 from mrseq.scripts.girf_dyn_triangle import main as create_seq
 
-EXPECTED_DUR = 231.42456  # defined 2026-03-13
+EXPECTED_DUR = 447.42456  # defined 2026-03-19
 
 
 def test_default_seq_duration(system_defaults):

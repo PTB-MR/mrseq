@@ -23,7 +23,7 @@ def girf_triangle_kernel(
     slice_pos: Sequence[float],
     enumerate_coeff: Sequence[float],
     tr: float,
-    ec_delay: float,
+    adc_delay: float,
     rise_times: Sequence[float],
     grad_free: float,
     trig_duration: float,
@@ -60,8 +60,8 @@ def girf_triangle_kernel(
         List of amplitude coefficients for gradient encoding.
     tr
         Repetition time (in seconds).
-    ec_delay
-        Eddy current compensation delay (in seconds).
+    adc_delay
+        Delay between gradient and ADC to minimize eddy current effects (in seconds).
     rise_times
         List of gradient rise times (in seconds).
     grad_free
@@ -106,7 +106,7 @@ def girf_triangle_kernel(
     # Create necessary delays
     grad_free_time = pp.make_delay(grad_free)
     delay_tr = pp.make_delay(tr)
-    delay_ec = pp.make_delay(ec_delay)
+    delay_ec = pp.make_delay(adc_delay)
 
     # Create trigger pulse for MFC
     trig = pp.make_digital_output_pulse(channel='ext1', duration=trig_duration, delay=0)
@@ -157,25 +157,19 @@ def girf_triangle_kernel(
                         # Add eddy current compensation delay
                         seq.add_block(delay_ec)
 
-                        # Add ADC and gradient triangle if amplitude is non-zero
-                        if amp_fac != 0:
-                            # Create triangle gradient (trapezoid with no flat time)
-                            g_triangle = pp.make_trapezoid(
-                                channel=grad_channel,
-                                system=system,
-                                rise_time=rise_time_val,
-                                flat_time=0,
-                                amplitude=amp,
-                                delay=0,
-                            )
+                        # Create triangle gradient (trapezoid with no flat time)
+                        g_triangle = pp.make_trapezoid(
+                            channel=grad_channel,
+                            system=system,
+                            rise_time=rise_time_val,
+                            flat_time=0,
+                            amplitude=amp,
+                            delay=0,
+                        )
 
-                            seq.add_block(trig)
-                            seq.add_block(grad_free_time)
-                            seq.add_block(adc, g_triangle)
-                        else:
-                            seq.add_block(trig)
-                            seq.add_block(grad_free_time)
-                            seq.add_block(adc)
+                        seq.add_block(trig)
+                        seq.add_block(grad_free_time)
+                        seq.add_block(adc, g_triangle)
 
                         # Add TR delay
                         seq.add_block(delay_tr)
@@ -186,18 +180,15 @@ def girf_triangle_kernel(
     seq.set_definition('FOV', [0.5, 0.5, slice_thickness])
     seq.set_definition('ReconMatrix', (n_readout, 1, 1))
     seq.set_definition('SliceThickness', slice_thickness)
+    seq.set_definition('SlicePos', slice_pos)
+    seq.set_definition('TE', 0)
     seq.set_definition('TR', tr)
     seq.set_definition('RiseTimes', rise_times)
-    seq.set_definition('GradChannels', grad_channels)
-    seq.set_definition('SlicePositions', slice_pos)
-    seq.set_definition('Averages', n_avg)
     seq.set_definition('CameraNrDynamics', cam_nr_dynamics)
     seq.set_definition('CameraNrSyncDynamics', cam_nr_sync_dyn)
     seq.set_definition('CameraAcqDuration', cam_acq_duration)
     seq.set_definition('CameraInterleaveTR', cam_interleave_tr)
     seq.set_definition('CameraAcqDelay', cam_acq_delay)
-
-    # seq.set_definition('TE', 0)
 
     return seq
 
@@ -205,7 +196,7 @@ def girf_triangle_kernel(
 def main(
     system: pp.Opts | None = None,
     n_avg: int = 3,
-    tr: float = 1.0,
+    tr: float = 2.0,
     slice_thickness: float = 1.5e-3,
     slice_pos: list[float] | None = None,
     show_plots: bool = True,
@@ -213,28 +204,40 @@ def main(
     timing_check: bool = True,
     v141_compatibility: bool = True,
 ) -> tuple[pp.Sequence, Path]:
-    """Generate a GIRF sequence with triangular gradients.
+    """Generate a sequence with triangular gradients to estimate the GIRF.
+
+    This sequence allows for the calculation of a gradient impulse response function (GIRF) using the Dyn
+    method [DUY1998]_ or the use of a field camera [VAN2013]_ .
+
+
+    .. [DUY1998] Dyn J, Yang Y, Frank JA, and van der Veen JW (1998), Simple Correction Method fork-Space Trajectory
+       Deviations in MRI. JMR 132, 150-153. https://doi.org/10.1006/jmre.1998.1396
+
+    .. [VAN2013] Vannesjo SJ, Haeberlin M, Kasper L, Pavan M, Wilm, BJ, Barnet C, and PRuessman KP (2013),
+       Gradient system characterization by impulse response measurements with a dynamic field camera. MRM 69. 583-593.
+       https://doi.org/10.1002/mrm.24263
+
 
     Parameters
     ----------
     system
         PyPulseq system limits object. Uses default system if None.
     n_avg
-        Number of averages. Default: 3
+        Number of averages.
     tr
-        Repetition time (in seconds). Default: 1.0
+        Repetition time (in seconds).
     slice_thickness
-        Slice thickness (in meters). Default: 1.5e-3
+        Slice thickness (in meters).
     slice_pos
-        List of slice positions (in meters). Default: [0.04]
+        List of slice positions (in meters).
     show_plots
-        Toggles sequence plot. Default: True
+        Toggles sequence plot.
     test_report
-        Toggles advanced test report. Default: True
+        Toggles advanced test report.
     timing_check
-        Toggles timing check of the sequence. Default: True
+        Toggles timing check of the sequence.
     v141_compatibility
-        Save the sequence in pulseq v1.4.1 for backwards compatibility. Default: True
+        Save the sequence in pulseq v1.4.1 for backwards compatibility.
 
     Returns
     -------
@@ -262,7 +265,7 @@ def main(
 
     # Define sequence parameters
     enumerate_coeff = [-1.0, 0.0]  # amplitude coefficients for gradient encoding
-    ec_delay = 1e-3  # eddy current compensation delay [s]
+    adc_delay = 1e-3  # eddy current compensation delay [s]
     rise_times = [5e-5, 6e-5, 7e-5, 8e-5, 9e-5, 1e-4, 1.1e-4, 1.2e-4, 1.3e-4, 1.4e-4, 1.5e-4, 1.6e-4]  # rise times [s]
 
     # Define camera and trigger parameters
@@ -292,7 +295,7 @@ def main(
         slice_pos=slice_pos,
         enumerate_coeff=enumerate_coeff,
         tr=tr,
-        ec_delay=ec_delay,
+        adc_delay=adc_delay,
         rise_times=rise_times,
         grad_free=grad_free,
         trig_duration=trig_duration,
