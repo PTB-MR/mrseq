@@ -12,8 +12,8 @@ from mrseq.utils import write_sequence
 
 def girf_triangle_kernel(
     system: pp.Opts,
-    rf_phi: float,
-    rf_dur: float,
+    rf_flip_angle: float,
+    rf_duration: float,
     rf_bwt: float,
     apodization: float,
     n_avg: int,
@@ -38,9 +38,9 @@ def girf_triangle_kernel(
     ----------
     system
         PyPulseq system limits object.
-    rf_phi
+    rf_flip_angle
         Flip angle of RF excitation pulse (in degrees).
-    rf_dur
+    rf_duration
         Duration of RF excitation pulse (in seconds).
     rf_bwt
         Bandwidth-time product of RF excitation pulse (Hz * seconds).
@@ -92,10 +92,10 @@ def girf_triangle_kernel(
     seq = pp.Sequence(system=system)
 
     # Create and set sinc pulse parameters
-    rf, g_sl, g_sl_r = pp.make_sinc_pulse(
-        flip_angle=rf_phi / 180 * np.pi,
+    rf, gz, gzr = pp.make_sinc_pulse(
+        flip_angle=rf_flip_angle / 180 * np.pi,
         delay=system.rf_dead_time,
-        duration=rf_dur,
+        duration=rf_duration,
         slice_thickness=slice_thickness,
         apodization=apodization,
         time_bw_product=rf_bwt,
@@ -146,13 +146,13 @@ def girf_triangle_kernel(
                         amp = amp_fac * system.max_slew * rise_time_val
 
                         # Set RF frequency offset for current slice
-                        rf.freq_offset = g_sl.amplitude * slice_pos_val
-                        g_sl.channel = grad_channel
-                        g_sl_r.channel = grad_channel
+                        rf.freq_offset = gz.amplitude * slice_pos_val
+                        gz.channel = grad_channel
+                        gzr.channel = grad_channel
 
                         # Add RF pulse with slice selection
-                        seq.add_block(rf, g_sl, avg_label, seg_label, grad_label, slice_label, amp_fac_label)
-                        seq.add_block(g_sl_r)
+                        seq.add_block(rf, gz, avg_label, seg_label, grad_label, slice_label, amp_fac_label)
+                        seq.add_block(gzr)
 
                         # Add eddy current compensation delay
                         seq.add_block(delay_ec)
@@ -254,8 +254,8 @@ def main(
         slice_pos = [0.04]
 
     # Define RF excitation pulse parameters
-    rf_phi = 90  # flip angle [degrees]
-    rf_dur = 8.4e-3  # duration of the RF excitation pulse [s]
+    rf_flip_angle = 90  # flip angle [degrees]
+    rf_duration = 8.4e-3  # duration of the RF excitation pulse [s]
     rf_bwt = 4  # bandwidth-time product of RF excitation pulse [Hz*s]
     apodization = 0.5  # apodization factor of RF excitation pulse
 
@@ -284,8 +284,8 @@ def main(
 
     seq = girf_triangle_kernel(
         system=system,
-        rf_phi=rf_phi,
-        rf_dur=rf_dur,
+        rf_flip_angle=rf_flip_angle,
+        rf_duration=rf_duration,
         rf_bwt=rf_bwt,
         apodization=apodization,
         n_avg=n_avg,
