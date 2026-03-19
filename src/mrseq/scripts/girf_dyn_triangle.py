@@ -156,6 +156,8 @@ def girf_triangle_kernel(
 
                         # Add eddy current compensation delay
                         seq.add_block(delay_ec)
+                        seq.add_block(trig)
+                        seq.add_block(grad_free_time)
 
                         # Create triangle gradient (trapezoid with no flat time)
                         g_triangle = pp.make_trapezoid(
@@ -166,9 +168,6 @@ def girf_triangle_kernel(
                             amplitude=amp,
                             delay=0,
                         )
-
-                        seq.add_block(trig)
-                        seq.add_block(grad_free_time)
                         seq.add_block(adc, g_triangle)
 
                         # Add TR delay
