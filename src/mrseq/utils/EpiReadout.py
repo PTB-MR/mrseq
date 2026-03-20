@@ -614,8 +614,6 @@ class EpiReadout:
             seq.add_block(self.gx_pre, self.gy_pre)
 
         for pe_idx in range(self.n_phase_enc_total):
-            rev_label = pp.make_label(type='SET', label='REV', value=self.gx.amplitude < 0)
-            seg_label = pp.make_label(type='SET', label='SEG', value=self.gx.amplitude < 0)
             if self.readout_type == 'symmetric':
                 # Select blip gradient based on phase encoding index
                 if pe_idx == 0:
@@ -626,11 +624,13 @@ class EpiReadout:
                     gy_blip = self.gy_blipdownup
 
                 # Add readout block and reverse polarity of readout gradient
-                seq.add_block(self.gx, gy_blip, self.adc, lin_label, rev_label, seg_label)
-                self.gx.amplitude = -self.gx.amplitude
+                gx_scale = -1 if np.mod(pe_idx, 2) else 1
+                rev_label = pp.make_label(type='SET', label='REV', value=gx_scale == -1)
+                seg_label = pp.make_label(type='SET', label='SEG', value=gx_scale == -1)
+                seq.add_block(pp.scale_grad(self.gx, gx_scale), gy_blip, self.adc, lin_label, rev_label, seg_label)
 
             elif self.readout_type == 'flyback':
-                seq.add_block(self.gx, self.adc, lin_label, rev_label)
+                seq.add_block(self.gx, self.adc, lin_label)
                 if pe_idx != self.n_phase_enc_total - 1:
                     seq.add_block(self.gx_flyback, self.gy_blip)
 
