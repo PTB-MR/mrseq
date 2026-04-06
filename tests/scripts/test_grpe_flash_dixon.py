@@ -1,9 +1,12 @@
 """Tests for 3D FLASH sequence with golden radial phase encoding."""
 
+import numpy as np
 import pytest
 from mrseq.scripts.grpe_flash_dixon import main as create_seq
+from mrseq.utils.system_defaults import sys_a
+from mrseq.utils.system_defaults import sys_b
 
-EXPECTED_DUR = 17.84831  # defined 2025-11-09
+EXPECTED_DUR = 18.86719  # defined 2026-03-17
 
 
 def test_default_seq_duration(system_defaults):
@@ -11,6 +14,14 @@ def test_default_seq_duration(system_defaults):
     seq, _ = create_seq(system=system_defaults, show_plots=False)
     duration = seq.duration()[0]
     assert duration == pytest.approx(EXPECTED_DUR)
+
+
+@pytest.mark.parametrize('system', [sys_a, sys_b])
+def test_seq_duration(system):
+    """Test system dependance of sequence."""
+    seq, _ = create_seq(system=system, show_plots=False)
+    duration = seq.duration()[0]
+    assert np.abs(duration - EXPECTED_DUR) / EXPECTED_DUR < 0.16
 
 
 def test_seq_creation_error_on_short_tr(system_defaults):
