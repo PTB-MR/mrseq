@@ -55,7 +55,7 @@ jobs:
 
       # Upload to GitHub Pages
       - name: Upload artifact for Pages
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-pages-artifact@v5
         with:
           path: examples/_build/html
 
