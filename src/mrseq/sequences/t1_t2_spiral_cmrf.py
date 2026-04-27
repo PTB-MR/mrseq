@@ -329,6 +329,18 @@ def t1_t2_spiral_cmrf_kernel(
     if mrd_header_file:
         prot.close()
 
+    # write all important parameters into the seq-file definitions
+    seq.set_definition('Name', 'cMRF_spiral')
+    seq.set_definition('FOV', [fov_xy, fov_xy, slice_thickness])
+    seq.set_definition('TE', min_te)
+    seq.set_definition('TI', time_since_inversion)
+    seq.set_definition('TR', tr)
+    seq.set_definition('t2prep_te', [0, 0, t2_prep_echo_times[0], t2_prep_echo_times[1], t2_prep_echo_times[2]])
+    seq.set_definition('t1prep_ti', [time_since_inversion, 0, 0, 0, 0])
+    seq.set_definition('slice_thickness', slice_thickness)
+    seq.set_definition('sampling_scheme', 'spiral')
+    seq.set_definition('number_of_readouts', int(n_readout))
+
     return seq, time_since_inversion, min_te
 
 
@@ -408,7 +420,7 @@ def main(
     if (output_path / Path(filename + '_header.h5')).exists():
         (output_path / Path(filename + '_header.h5')).unlink()
 
-    seq, inversion_time, te = t1_t2_spiral_cmrf_kernel(
+    seq, _inversion_time, _te = t1_t2_spiral_cmrf_kernel(
         system=system,
         t2_prep_echo_times=t2_prep_echo_times,
         tr=tr,
@@ -440,18 +452,6 @@ def main(
     if test_report:
         print('\nCreating advanced test report...')
         print(seq.test_report())
-
-    # write all important parameters into the seq-file definitions
-    seq.set_definition('Name', 'cMRF_spiral')
-    seq.set_definition('FOV', [fov_xy, fov_xy, slice_thickness])
-    seq.set_definition('TE', te)
-    seq.set_definition('TI', inversion_time)
-    seq.set_definition('TR', tr)
-    seq.set_definition('t2prep_te', [0, 0, t2_prep_echo_times[0], t2_prep_echo_times[1], t2_prep_echo_times[2]])
-    seq.set_definition('t1prep_ti', [inversion_time, 0, 0, 0, 0])
-    seq.set_definition('slice_thickness', slice_thickness)
-    seq.set_definition('sampling_scheme', 'spiral')
-    seq.set_definition('number_of_readouts', int(n_readout))
 
     # save seq-file to disk
     output_path = Path.cwd() / 'output'

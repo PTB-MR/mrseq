@@ -1,7 +1,7 @@
-"""Tests for Gold standard SE-based inversion recovery sequence."""
+"""Tests for Gold standard GRE-based inversion recovery sequence."""
 
 import pytest
-from mrseq.scripts.t1_inv_rec_se_single_line import main as create_seq
+from mrseq.sequences.t1_inv_rec_gre_single_line import main as create_seq
 
 EXPECTED_DUR = 7168.000320  # defined 2025-02-03
 
@@ -29,7 +29,7 @@ def test_seq_duration_vary_params_without_effect(system_defaults):
     """Test if sequence duration is as expected."""
     seq, _ = create_seq(
         system=system_defaults,
-        te=10e-3,  # default None
+        te=5e-3,  # default None
         fov_xy=192e-3,  # default 128e-3
         n_readout=192,  # default 128
         slice_thickness=6e-3,  # default 8e-3

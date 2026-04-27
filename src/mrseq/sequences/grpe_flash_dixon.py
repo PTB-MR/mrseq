@@ -434,6 +434,15 @@ def grpe_flash_dixon_kernel(
         prot.close()
 
     delta_te_array = np.diff(time_to_echoes)
+
+    # write all required parameters in the seq-file header/definitions
+    seq.set_definition('FOV', [fov_x, fov_y, fov_z])
+    seq.set_definition('ReconMatrix', (n_readout, n_rpe_points, n_rpe_points))
+    seq.set_definition('SliceThickness', fov_z)
+    seq.set_definition('TE', [(te or float(min_te)) + idx * float(delta_te_array[0]) for idx in range(n_echoes)])
+    seq.set_definition('TR', tr or float(min_tr))
+    seq.set_definition('ReadoutOversamplingFactor', readout_oversampling)
+
     return seq, float(min_te), float(min_tr), float(delta_te_array[0])
 
 
@@ -537,7 +546,7 @@ def main(
     if (output_path / Path(filename + '_header.h5')).exists():
         (output_path / Path(filename + '_header.h5')).unlink()
 
-    seq, min_te, min_tr, delta_te = grpe_flash_dixon_kernel(
+    seq, _min_te, min_tr, delta_te = grpe_flash_dixon_kernel(
         system=system,
         te=te,
         delta_te=delta_te,
@@ -579,14 +588,6 @@ def main(
     if test_report:
         print('\nCreating advanced test report...')
         print(seq.test_report())
-
-    # write all required parameters in the seq-file header/definitions
-    seq.set_definition('FOV', [fov_x, fov_y, fov_z])
-    seq.set_definition('ReconMatrix', (n_readout, n_rpe_points, n_rpe_points))
-    seq.set_definition('SliceThickness', fov_z)
-    seq.set_definition('TE', [(te or min_te) + idx * delta_te for idx in range(n_echoes)])
-    seq.set_definition('TR', tr or min_tr)
-    seq.set_definition('ReadoutOversamplingFactor', readout_oversampling)
 
     # save seq-file to disk
     print(f"\nSaving sequence file '{filename}.seq' into folder '{output_path}'.")

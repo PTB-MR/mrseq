@@ -6,6 +6,8 @@ import ismrmrd
 import numpy as np
 import pypulseq as pp
 
+from mrseq.utils import MultiEchoAcquisition
+from mrseq.utils import cartesian_phase_encoding
 from mrseq.utils import find_gx_flat_time_on_adc_raster
 from mrseq.utils import round_to_raster
 from mrseq.utils import sys_defaults
@@ -14,8 +16,6 @@ from mrseq.utils.ismrmrd import Fov
 from mrseq.utils.ismrmrd import Limits
 from mrseq.utils.ismrmrd import MatrixSize
 from mrseq.utils.ismrmrd import create_header
-from mrseq.utils.trajectory import MultiEchoAcquisition
-from mrseq.utils.trajectory import cartesian_phase_encoding
 
 
 def t2star_multi_echo_flash_kernel(
@@ -317,6 +317,15 @@ def t2star_multi_echo_flash_kernel(
         prot.close()
 
     delta_te_array = np.diff(time_to_echoes)
+
+    # write all required parameters in the seq-file header/definitions
+    seq.set_definition('FOV', [fov_xy, fov_xy, slice_thickness])
+    seq.set_definition('ReconMatrix', (n_readout, n_readout, 1))
+    seq.set_definition('SliceThickness', slice_thickness)
+    seq.set_definition('TE', [(te or float(min_te)) + idx * float(delta_te_array[0]) for idx in range(n_echoes)])
+    seq.set_definition('TR', tr or float(min_tr))
+    seq.set_definition('ReadoutOversamplingFactor', readout_oversampling)
+
     return seq, float(min_te), float(min_tr), float(delta_te_array[0])
 
 
@@ -420,7 +429,7 @@ def main(
     output_path = Path.cwd() / 'output'
     output_path.mkdir(parents=True, exist_ok=True)
 
-    seq, min_te, min_tr, delta_te = t2star_multi_echo_flash_kernel(
+    seq, _min_te, _min_tr, delta_te = t2star_multi_echo_flash_kernel(
         system=system,
         te=te,
         delta_te=delta_te,
@@ -460,14 +469,6 @@ def main(
     if test_report:
         print('\nCreating advanced test report...')
         print(seq.test_report())
-
-    # write all required parameters in the seq-file header/definitions
-    seq.set_definition('FOV', [fov_xy, fov_xy, slice_thickness])
-    seq.set_definition('ReconMatrix', (n_readout, n_readout, 1))
-    seq.set_definition('SliceThickness', slice_thickness)
-    seq.set_definition('TE', [(te or min_te) + idx * delta_te for idx in range(n_echoes)])
-    seq.set_definition('TR', tr or min_tr)
-    seq.set_definition('ReadoutOversamplingFactor', readout_oversampling)
 
     # save seq-file to disk
     print(f"\nSaving sequence file '{filename}.seq' into folder '{output_path}'.")

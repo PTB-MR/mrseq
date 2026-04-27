@@ -1,10 +1,10 @@
-"""Tests for 2D Cartesian FLASH with T2-preparation pulses for T2 mapping."""
+"""Tests for Gold standard multi-echo SE sequence."""
 
 import numpy as np
 import pytest
-from mrseq.scripts.t2_t2prep_flash import main as create_seq
+from mrseq.sequences.t2_multi_echo_se_single_line import main as create_seq
 
-EXPECTED_DUR = 8.17667  # defined 2026-01-26
+EXPECTED_DUR = 5120.000970  # defined 2025-02-06
 
 
 def test_default_seq_duration(system_defaults):
@@ -17,20 +17,22 @@ def test_default_seq_duration(system_defaults):
 def test_seq_creation_error_on_short_te(system_defaults):
     """Test if error is raised on too short echo time."""
     with pytest.raises(ValueError):
-        create_seq(system=system_defaults, te=1e-3, show_plots=False)
+        create_seq(system=system_defaults, echo_times=np.array([1e-3, 2e-3]), show_plots=False)
 
 
 def test_seq_creation_error_on_short_tr(system_defaults):
     """Test if error is raised on too short repetition time."""
     with pytest.raises(ValueError):
-        create_seq(system=system_defaults, tr=2e-3, show_plots=False)
+        create_seq(system=system_defaults, tr=5e-3, show_plots=False)
 
 
-def test_seq_duration_vary_params_without_effect(system_defaults):
+def test_seq_duration_vary_params_without_changing_duration(system_defaults):
     """Test if sequence duration is as expected."""
     seq, _ = create_seq(
         system=system_defaults,
-        t2_prep_echo_times=np.array([0.05, 0.1, 0.2]),
+        fov_xy=192e-3,  # default 128e-3
+        n_readout=192,  # default 128
+        slice_thickness=6e-3,  # default 8e-3
         show_plots=False,
         test_report=False,
         timing_check=False,

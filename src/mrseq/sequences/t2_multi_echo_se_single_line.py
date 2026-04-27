@@ -206,6 +206,13 @@ def t2_multi_echo_se_single_line_kernel(
 
             seq.add_block(pp.make_delay(tr_delay))
 
+    # write all required parameters in the seq-file header/definitions
+    seq.set_definition('FOV', [fov_xy, fov_xy, slice_thickness])
+    seq.set_definition('ReconMatrix', (n_readout, n_phase_encoding, 1))
+    seq.set_definition('SliceThickness', slice_thickness)
+    seq.set_definition('TE', echo_times.tolist())
+    seq.set_definition('TR', tr)
+
     return seq, min_tr_first_echo_block
 
 
@@ -325,13 +332,6 @@ def main(
 
     # define sequence filename
     filename = f'{Path(__file__).stem}_{int(fov_xy * 1000)}fov_{n_readout}nx_{n_phase_encoding}ny_{len(echo_times)}TEs'
-
-    # write all required parameters in the seq-file header/definitions
-    seq.set_definition('FOV', [fov_xy, fov_xy, slice_thickness])
-    seq.set_definition('ReconMatrix', (n_readout, n_phase_encoding, 1))
-    seq.set_definition('SliceThickness', slice_thickness)
-    seq.set_definition('TE', echo_times.tolist())
-    seq.set_definition('TR', tr)
 
     # save seq-file to disk
     output_path = Path.cwd() / 'output'

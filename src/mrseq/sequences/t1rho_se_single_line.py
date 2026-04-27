@@ -1,28 +1,30 @@
-"""Gold standard SE-based inversion recovery sequence with one inversion pulse before every readout."""
+"""Gold standard SE-based sequence for T1rho mapping with one preparation pulse before every readout."""
 
 from pathlib import Path
 
 import numpy as np
 import pypulseq as pp
 
-from mrseq.preparations import add_t1_inv_prep
+from mrseq.preparations import add_t1rho_prep
 from mrseq.utils import round_to_raster
 from mrseq.utils import sys_defaults
 from mrseq.utils import write_sequence
 
 
-def t1_inv_rec_se_single_line_kernel(
+def t1rho_se_single_line_kernel(
     system: pp.Opts,
-    inversion_times: np.ndarray,
+    spin_lock_times: np.ndarray,
     te: float | None,
     tr: float,
     fov_xy: float,
     n_readout: int,
     n_phase_encoding: int,
     slice_thickness: float,
-    rf_inv_duration: float,
-    rf_inv_spoil_risetime: float,
-    rf_inv_spoil_flattime: float,
+    rf_spin_lock_duration: float,
+    spin_lock_amplitude: float,
+    add_spin_lock_spoiler: bool,
+    spin_lock_spoiler_ramp_time: float,
+    spin_lock_spoiler_flat_time: float,
     gx_pre_duration: float,
     gx_flat_time: float,
     rf90_duration: float,
@@ -33,17 +35,15 @@ def t1_inv_rec_se_single_line_kernel(
     rf180_flip_angle: float,
     rf180_bwt: float,
     rf180_apodization: float,
-    gz_spoil_duration: float,
-    gz_spoil_area: float,
 ) -> tuple[pp.Sequence, float, float]:
-    """Generate a SE-based inversion recovery sequence with one inversion pulse before every readout.
+    """Generate a SE-based sequence for T1rho mapping with one preparation pulse before every readout.
 
     Parameters
     ----------
     system
         PyPulseq system limits object.
-    inversion_times
-        Array of inversion times (in seconds).
+    spin_lock_times
+        Array of spin lock times (in seconds).
     te
         Desired echo time (TE) (in seconds). Minimum echo time is used if set to None.
     tr
@@ -56,12 +56,16 @@ def t1_inv_rec_se_single_line_kernel(
         Number of phase encoding steps.
     slice_thickness
         Slice thickness of the 2D slice (in meters).
-    rf_inv_duration
-        Duration of adiabatic inversion pulse (in seconds)
-    rf_inv_spoil_risetime
-        Rise time of spoiler after inversion pulse (in seconds)
-    rf_inv_spoil_flattime
-        Flat time of spoiler after inversion pulse (in seconds)
+    rf_spin_lock_duration
+        Duration of 90° tip-down/tip-up pulses for spin lock preparation (in seconds).
+    spin_lock_amplitude
+        Amplitude of the spin-lock pulse (in T).
+    add_spin_lock_spoiler
+        Toggles addition of spoiler gradients after the spin lock pulse.
+    spin_lock_spoiler_ramp_time
+        Duration of gradient spoiler ramps (in seconds).
+    spin_lock_spoiler_flat_time
+        Duration of gradient spoiler plateau (in seconds).
     gx_pre_duration
         Duration of readout pre-winder gradient (in seconds)
     gx_flat_time
@@ -82,10 +86,6 @@ def t1_inv_rec_se_single_line_kernel(
         Bandwidth-time product of rf refocusing pulse (Hz * seconds)
     rf180_apodization
         Apodization factor of rf refocusing pulse
-    gz_spoil_duration
-        Duration of spoiler (crusher) gradient applied around 180° pulse and after readout (in seconds)
-    gz_spoil_area
-        Area / zeroth gradient moment of spoiler (crusher) gradient applied around 180° pulse and after readout
 
     Returns
     -------
@@ -99,7 +99,7 @@ def t1_inv_rec_se_single_line_kernel(
     # create PyPulseq Sequence object and set system limits
     seq = pp.Sequence(system=system)
 
-    # create slice selection 90° and 180° pulse and gradient
+    # create slice selective 90° RF pulse and gradient
     rf90, gz90, _ = pp.make_sinc_pulse(
         flip_angle=rf90_flip_angle / 180 * np.pi,
         duration=rf90_duration,
@@ -142,8 +142,8 @@ def t1_inv_rec_se_single_line_kernel(
     phase_areas = (np.arange(n_phase_encoding) - n_phase_encoding / 2) * delta_k
     k0_center_id = np.where((np.arange(n_readout) - n_readout / 2) * delta_k == 0)[0][0]
 
-    # spoiler along slice direction before and after 180°-SE-refocusing pulse
-    gz_spoil = pp.make_trapezoid(channel='z', system=system, area=gz_spoil_area, duration=gz_spoil_duration)
+    # create spoiler gradients
+    gz_spoil = pp.make_trapezoid(channel='z', area=4 / slice_thickness, system=system)
 
     # calculate minimum echo time
     min_te = (
@@ -189,10 +189,10 @@ def t1_inv_rec_se_single_line_kernel(
 
     print(f'\nMinimum TE: {min_te * 1000:.3f} ms')
 
-    # loop over inversion times
-    for ti_idx, ti in enumerate(inversion_times):
-        # set contrast ('ECO') label for current inversion time
-        contrast_label = pp.make_label(type='SET', label='ECO', value=int(ti_idx))
+    # loop over spin lock times
+    for tsl_idx, tsl in enumerate(spin_lock_times):
+        # set contrast ('ECO') label for current spin lock time
+        contrast_label = pp.make_label(type='SET', label='ECO', value=int(tsl_idx))
 
         # loop over phase encoding steps
         for pe_idx in np.arange(n_phase_encoding):
@@ -202,24 +202,18 @@ def t1_inv_rec_se_single_line_kernel(
             # save start time of current TR block
             _start_time_tr_block = sum(seq.block_durations.values())
 
-            # add T1 preparation block
-            seq, _, time_since_inversion = add_t1_inv_prep(
-                seq=seq,
-                system=system,
-                rf_duration=rf_inv_duration,
-                spoiler_ramp_time=rf_inv_spoil_risetime,
-                spoiler_flat_time=rf_inv_spoil_flattime,
-            )
-
-            # calculate and add inversion time (TI) delay.
-            # TI is defined as time from middle of inversion pulse to middle of excitation pulse.
-            ti_delay = ti - time_since_inversion - rf90.delay - rf90_duration / 2
-            ti_delay = round_to_raster(ti_delay, system.block_duration_raster)
-            if ti_delay < 0:
-                raise ValueError(
-                    'Inversion time too short for given RF inversion and post inversion spoiler durations.'
+            # add T1rho preparation block
+            if tsl > 0:
+                seq, _ = add_t1rho_prep(
+                    seq=seq,
+                    system=system,
+                    duration_90=rf_spin_lock_duration,
+                    spin_lock_time=tsl,
+                    spin_lock_amplitude=spin_lock_amplitude,
+                    add_spoiler=add_spin_lock_spoiler,
+                    spoiler_ramp_time=spin_lock_spoiler_ramp_time,
+                    spoiler_flat_time=spin_lock_spoiler_flat_time,
                 )
-            seq.add_block(pp.make_delay(ti_delay))
 
             # add 90° excitation pulse followed by rewinder gradient
             seq.add_block(rf90, gz90)
@@ -250,7 +244,7 @@ def t1_inv_rec_se_single_line_kernel(
             tr_delay = round_to_raster(tr - duration_tr_block, system.block_duration_raster)
 
             # save time for sequence plot
-            if ti_idx == 0 and pe_idx == 0:
+            if tsl_idx == 0 and pe_idx == 0:
                 time_to_first_tr_block = duration_tr_block
 
             if tr_delay < 0:
@@ -258,12 +252,20 @@ def t1_inv_rec_se_single_line_kernel(
 
             seq.add_block(pp.make_delay(tr_delay))
 
+    # write all required parameters in the seq-file header/definitions
+    seq.set_definition('FOV', [fov_xy, fov_xy, slice_thickness])
+    seq.set_definition('ReconMatrix', (n_readout, n_phase_encoding, 1))
+    seq.set_definition('SliceThickness', slice_thickness)
+    seq.set_definition('TE', te or min_te)
+    seq.set_definition('TR', tr)
+    seq.set_definition('TSL', spin_lock_times.tolist())
+
     return seq, time_to_first_tr_block, min_te
 
 
 def main(
     system: pp.Opts | None = None,
-    inversion_times: np.ndarray | None = None,
+    spin_lock_times: np.ndarray | None = None,
     te: float | None = None,
     tr: float = 8,
     fov_xy: float = 128e-3,
@@ -275,15 +277,15 @@ def main(
     timing_check: bool = True,
     v141_compatibility: bool = True,
 ) -> tuple[pp.Sequence, Path]:
-    """Generate a SE-based inversion recovery sequence with one inversion pulse before every readout.
+    """Generate a SE-based sequence for T1rho mapping with one preparation pulse before every readout.
 
     Parameters
     ----------
     system
         PyPulseq system limits object.
-    inversion_times
+    spin_lock_times
         Array of inversion times (in seconds).
-        Default values [0.025, 0.050, 0.3, 0.6, 1.2, 2.4, 4.8] s are used if set to None.
+        Default values [0.025, 0.050, 0.1] s are used if set to None.
     te
         Desired echo time (TE) (in seconds). Minimum echo time is used if set to None.
     tr
@@ -308,29 +310,27 @@ def main(
     Returns
     -------
     seq
-        Sequence object of SE-based T1 inversion recovery sequence.
+        Sequence object of SE-based T1rho sequence.
     file_path
         Path to the sequence file.
     """
     if system is None:
         system = sys_defaults
 
-    if inversion_times is None:
-        inversion_times = np.array([0.025, 0.050, 0.3, 0.6, 1.2, 2.4, 4.8])
+    if spin_lock_times is None:
+        spin_lock_times = np.array([0.025, 0.050, 0.1])
 
-    # define T1prep settings
-    rf_inv_duration = 10.24e-3  # duration of adiabatic inversion pulse [s]
-    rf_inv_spoil_risetime = 0.6e-3  # rise time of spoiler after inversion pulse [s]
-    rf_inv_spoil_flattime = 8.4e-3  # flat time of spoiler after inversion pulse [s]
+    # define settings of spin-lock preparation pulse
+    rf_spin_lock_duration = 2e-3
+    spin_lock_amplitude = 5.0e-6
+    add_spin_lock_spoiler = True
+    spin_lock_spoiler_ramp_time = 6e-4
+    spin_lock_spoiler_flat_time = 8.4e-3
 
     # define ADC and gradient timing
     adc_dwell = system.grad_raster_time
     gx_pre_duration = 1.0e-3  # duration of readout pre-winder gradient [s]
     gx_flat_time = n_readout * adc_dwell  # flat time of readout gradient [s]
-
-    # define spoiler gradient settings
-    gz_spoil_duration = 0.8e-3  # duration of spoiler gradient [s]
-    gz_spoil_area = 4 / slice_thickness  # area / zeroth gradient moment of spoiler gradient
 
     # define settings of rf excitation pulse
     rf90_duration = 1.28e-3  # duration of the rf excitation pulse [s]
@@ -344,18 +344,20 @@ def main(
     rf180_bwt = 4  # bandwidth-time product of rf refocusing pulse [Hz*s]
     rf180_apodization = 0.5  # apodization factor of rf refocusing pulse
 
-    seq, time_to_first_tr_block, min_te = t1_inv_rec_se_single_line_kernel(
+    seq, time_to_first_tr_block, _min_te = t1rho_se_single_line_kernel(
         system=system,
-        inversion_times=inversion_times,
+        spin_lock_times=spin_lock_times,
         te=te,
         tr=tr,
         fov_xy=fov_xy,
         n_readout=n_readout,
         n_phase_encoding=n_phase_encoding,
         slice_thickness=slice_thickness,
-        rf_inv_duration=rf_inv_duration,
-        rf_inv_spoil_risetime=rf_inv_spoil_risetime,
-        rf_inv_spoil_flattime=rf_inv_spoil_flattime,
+        rf_spin_lock_duration=rf_spin_lock_duration,
+        spin_lock_amplitude=spin_lock_amplitude,
+        add_spin_lock_spoiler=add_spin_lock_spoiler,
+        spin_lock_spoiler_ramp_time=spin_lock_spoiler_ramp_time,
+        spin_lock_spoiler_flat_time=spin_lock_spoiler_flat_time,
         gx_pre_duration=gx_pre_duration,
         gx_flat_time=gx_flat_time,
         rf90_duration=rf90_duration,
@@ -366,8 +368,6 @@ def main(
         rf180_flip_angle=rf180_flip_angle,
         rf180_bwt=rf180_bwt,
         rf180_apodization=rf180_apodization,
-        gz_spoil_duration=gz_spoil_duration,
-        gz_spoil_area=gz_spoil_area,
     )
 
     # check timing of the sequence
@@ -386,16 +386,8 @@ def main(
 
     # define sequence filename
     filename = (
-        f'{Path(__file__).stem}_{int(fov_xy * 1000)}fov_{n_readout}nx_{n_phase_encoding}ny_{len(inversion_times)}TIs'
+        f'{Path(__file__).stem}_{int(fov_xy * 1000)}fov_{n_readout}nx_{n_phase_encoding}ny_{len(spin_lock_times)}TIs'
     )
-
-    # write all required parameters in the seq-file header/definitions
-    seq.set_definition('FOV', [fov_xy, fov_xy, slice_thickness])
-    seq.set_definition('ReconMatrix', (n_readout, n_phase_encoding, 1))
-    seq.set_definition('SliceThickness', slice_thickness)
-    seq.set_definition('TE', te or min_te)
-    seq.set_definition('TR', tr)
-    seq.set_definition('TI', inversion_times.tolist())
 
     # save seq-file to disk
     output_path = Path.cwd() / 'output'

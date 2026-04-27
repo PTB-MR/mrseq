@@ -1,7 +1,7 @@
 """Tests for cardiac MR Fingerprinting sequence with spiral readout."""
 
 import pytest
-from mrseq.scripts.t1_t2_spiral_cmrf import main as create_seq
+from mrseq.sequences.t1_t2_spiral_cmrf import main as create_seq
 
 EXPECTED_DUR = 14.55141  # defined 2026-02-10
 
