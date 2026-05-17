@@ -337,7 +337,7 @@ def grpe_flash_dixon_kernel(
                     seq_dummy = pp.Sequence(system=system)
                     seq_dummy, _ = multi_echo_gradient.add_to_seq_without_pre_post_gradient(seq_dummy, n_echoes)
                     readout_duration = sum(seq_dummy.block_durations.values())
-                    seq.add_block(pp.make_delay(readout_duration))
+                    seq.add_block(pp.make_delay(round_to_raster(readout_duration, system.block_duration_raster)))
 
                 # add re-winder and spoiler gradients
                 gy_pre.amplitude = -gy_pre.amplitude
@@ -512,7 +512,7 @@ def main(
     n_readout_with_oversampling = int(n_readout * readout_oversampling * partial_echo_factor)
     # define ADC and gradient timing
     adc_dwell_time = 1.0 / (receiver_bandwidth_per_pixel * n_readout_with_oversampling)
-    gx_pre_duration = 1.0e-3  # duration of readout pre-winder gradient [s]
+    gx_pre_duration = round_to_raster(1.2e-3, system.grad_raster_time)  # duration of readout pre-winder gradient [s]
     gx_flat_time, adc_dwell_time = find_gx_flat_time_on_adc_raster(
         n_readout_with_oversampling, adc_dwell_time, system.grad_raster_time, system.adc_raster_time
     )
@@ -522,7 +522,7 @@ def main(
     n_echoes = 3
 
     # define spoiling
-    gx_spoil_duration = 1.9e-3  # duration of spoiler gradient [s]
+    gx_spoil_duration = round_to_raster(2.0e-3, system.grad_raster_time)  # duration of spoiler gradient [s]
     gx_spoil_area = readout_oversampling * n_readout * 1 / fov_x  # area / zeroth gradient moment of spoiler gradient
     rf_spoiling_phase_increment = 117  # RF spoiling phase increment [°]. Set to 0 for no RF spoiling.
 

@@ -1,7 +1,10 @@
 """Tests for Gold standard GRE-based inversion recovery sequence."""
 
+import numpy as np
 import pytest
 from mrseq.scripts.t1_inv_rec_gre_single_line import main as create_seq
+from mrseq.utils.system_defaults import sys_a
+from mrseq.utils.system_defaults import sys_b
 
 EXPECTED_DUR = 7168.000320  # defined 2025-02-03
 
@@ -11,6 +14,14 @@ def test_default_seq_duration(system_defaults):
     seq, _ = create_seq(system=system_defaults, show_plots=False)
     duration = seq.duration()[0]
     assert duration == pytest.approx(EXPECTED_DUR)
+
+
+@pytest.mark.parametrize('system', [sys_a, sys_b])
+def test_seq_duration(system):
+    """Test system dependance of sequence."""
+    seq, _ = create_seq(system=system, show_plots=False)
+    duration = seq.duration()[0]
+    assert np.abs(duration - EXPECTED_DUR) / EXPECTED_DUR < 0.05
 
 
 def test_seq_creation_error_on_short_te(system_defaults):

@@ -377,7 +377,7 @@ def main(
         inversion_times = np.asarray([0.1, 0.18])
 
     # define settings of rf excitation pulse
-    rf_duration = 0.5e-3  # duration of the rf excitation pulse [s]
+    rf_duration = 0.6e-3  # duration of the rf excitation pulse [s]
     rf_flip_angle = 35  # flip angle of rf excitation pulse [°]
     rf_bwt = 1.5  # bandwidth-time product of rf excitation pulse [Hz*s]
     rf_apodization = 0.5  # apodization factor of rf excitation pulse
