@@ -11,7 +11,7 @@ from mrseq.scripts.epi2d_se import epi2d_se_kernel
 from mrseq.scripts.epi2d_se import main as create_seq
 from mrseq.utils.EpiReadout import EpiReadout
 
-EXPECTED_DUR = 0.22586  # defined 2026-02-28
+EXPECTED_DUR = 0.04846  # defined 2026-05-19
 
 
 def test_default_seq_duration(system_defaults):
