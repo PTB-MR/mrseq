@@ -1,6 +1,5 @@
 """2D Echo Planar Imaging (EPI) FID sequence."""
 
-from math import floor
 from pathlib import Path
 from typing import Literal
 
@@ -140,7 +139,7 @@ def epi2d_fid_kernel(
     min_te += max(rf.ringdown_time, gz.fall_time)  # RF ringdown time or gradient fall time
     if add_navigator_acq:
         min_te += pp.calc_duration(gzr, epi2d.gx_pre)
-        min_te += 3 * pp.calc_duration(epi2d.gx)
+        min_te += n_navigator_acq * pp.calc_duration(epi2d.gx)
         min_te += pp.calc_duration(epi2d.gy_pre)
     else:
         min_te += pp.calc_duration(gzr, epi2d.gx_pre, epi2d.gx_pre)
@@ -157,7 +156,7 @@ def epi2d_fid_kernel(
     min_tr = pp.calc_duration(rf, gz)
     if add_navigator_acq:
         min_tr += pp.calc_duration(gzr, epi2d.gx_pre)
-        min_tr += 3 * pp.calc_duration(epi2d.gx)
+        min_tr += n_navigator_acq * pp.calc_duration(epi2d.gx)
         min_tr += pp.calc_duration(epi2d.gy_pre)
     else:
         min_tr += pp.calc_duration(gzr, epi2d.gx_pre, epi2d.gx_pre)
@@ -189,15 +188,6 @@ def epi2d_fid_kernel(
         # write header to file
         prot = ismrmrd.Dataset(mrd_header_file, 'w')
         prot.write_xml_header(hdr.toXML('utf-8'))
-
-    # Precompute analytical navigator trajectory (single kx line, no ky blip)
-    if add_navigator_acq:
-        from mrseq.utils.EpiReadout import _trapezoid_area_at_times
-
-        nav_sample_times = epi2d.adc.delay + (np.arange(epi2d.adc.num_samples) + 0.5) * epi2d.adc.dwell
-        nav_kx_forward = _trapezoid_area_at_times(
-            epi2d.gx.rise_time, epi2d.gx.flat_time, epi2d.gx.fall_time, abs(epi2d.gx.amplitude), nav_sample_times
-        )
 
     # obtain noise samples if selected
     if add_noise_acq:
@@ -234,53 +224,16 @@ def epi2d_fid_kernel(
 
         # add navigator scans for ghost correction
         if add_navigator_acq:
-            # reverse the readout gradient and pre-winder in advance for navigator
-            gx_pre = pp.scale_grad(epi2d.gx_pre, -1)
-            gx = pp.scale_grad(epi2d.gx, -1)
-            # add slice selection rewinder and readout pre-winder in x direction (gy_pre will be added after navigators)
-            gzr, gx_pre = pp.align(left=[gzr], right=[gx_pre])
-            seq.add_block(
+            # FID: invert pre-winder for odd number of navigators
+            gx_pre_factor = -1 if n_navigator_acq % 2 == 1 else 1
+            seq, prot = epi2d.add_navigator_to_seq(
+                seq,
                 gzr,
-                gx_pre,
-                pp.make_label(label='NAV', type='SET', value=1),
-                pp.make_label(label='LIN', type='SET', value=floor(n_phase_encoding / 2)),
+                n_navigator_acq,
+                n_phase_encoding,
+                gx_pre_factor,
+                mrd_dataset=prot,
             )
-            # reverse gx_pre back after adding to sequence
-            gx_pre = pp.scale_grad(gx_pre, -1)
-
-            # Navigator kx offset: starts from -gx_pre.area (reversed pre-winder)
-            nav_kx_offset = -epi2d.gx_pre.area
-            nav_gx_sign = -1.0  # first navigator uses reversed gx
-
-            # add navigator scans for ghost correction
-            for n in range(n_navigator_acq):
-                seq.add_block(
-                    gx,
-                    epi2d.adc,
-                    pp.make_label(label='REV', type='SET', value=gx.amplitude < 0),
-                    pp.make_label(label='SEG', type='SET', value=gx.amplitude < 0),
-                    pp.make_label(label='AVG', type='SET', value=(n + 1) == 3),
-                )
-
-                # Write navigator trajectory to MRD
-                if mrd_header_file:
-                    assert prot is not None
-                    n_samples = epi2d.adc.num_samples
-                    traj = np.zeros((n_samples, 2), dtype=np.float32)
-                    if nav_gx_sign > 0:
-                        nav_kx = nav_kx_offset + nav_kx_forward
-                    else:
-                        nav_kx = nav_kx_offset - nav_kx_forward
-                    traj[:, 0] = nav_kx * fov_xy * readout_oversampling
-                    acq = ismrmrd.Acquisition()
-                    acq.resize(trajectory_dimensions=2, number_of_samples=n_samples)
-                    acq.traj[:] = traj
-                    prot.append_acquisition(acq)
-
-                # Update kx offset for next navigator (accumulate the signed gx area)
-                nav_kx_offset += nav_gx_sign * epi2d.gx.area
-                gx = pp.scale_grad(gx, -1)
-                nav_gx_sign = -nav_gx_sign
 
             # add echo time delay
             seq.add_block(pp.make_delay(te_delay))

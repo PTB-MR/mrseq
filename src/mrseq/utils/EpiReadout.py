@@ -591,6 +591,85 @@ class EpiReadout:
 
         return {'kx': kx_full, 'ky': ky_full, 'adc_indices': adc_idx}
 
+    def add_navigator_to_seq(
+        self,
+        seq: pp.Sequence,
+        gz_rewinder,
+        n_navigator_acq: int,
+        n_phase_encoding: int,
+        gx_pre_factor: int,
+        mrd_dataset: ismrmrd.Dataset | None = None,
+    ) -> tuple[pp.Sequence, ismrmrd.Dataset | None]:
+        """Add navigator acquisitions to the sequence for EPI ghost correction.
+
+        Parameters
+        ----------
+        seq
+            PyPulseq Sequence object.
+        gz_rewinder
+            Slice-selection rewinder gradient.
+        n_navigator_acq
+            Number of navigator acquisitions.
+        n_phase_encoding
+            Number of phase encoding steps (used for LIN label).
+        gx_pre_factor
+            Sign factor for the readout pre-winder. Use ``-1`` for odd navigator
+            count (FID) or even navigator count (SE) to ensure the kx position
+            is correct at the start of the imaging readout.
+        mrd_dataset
+            ISMRMRD dataset for writing navigator trajectories. If None, no
+            trajectory is written.
+        """
+        from math import floor
+
+        # Align slice-selection rewinder and readout pre-winder
+        gz_rewinder, gx_pre = pp.align(left=[gz_rewinder], right=[self.gx_pre])
+        seq.add_block(
+            gz_rewinder,
+            pp.scale_grad(gx_pre, gx_pre_factor),
+            pp.make_label(label='NAV', type='SET', value=1),
+            pp.make_label(label='LIN', type='SET', value=floor(n_phase_encoding / 2)),
+        )
+
+        # Precompute analytical navigator kx trajectory (single line, no ky blip)
+        nav_sample_times = self.adc.delay + (np.arange(self.adc.num_samples) + 0.5) * self.adc.dwell
+        nav_kx_forward = _trapezoid_area_at_times(
+            self.gx.rise_time, self.gx.flat_time, self.gx.fall_time, abs(self.gx.amplitude), nav_sample_times
+        )
+
+        # Navigator kx offset: starts from gx_pre.area scaled by gx_pre_factor
+        nav_kx_offset = self.gx_pre.area * gx_pre_factor
+
+        # Add navigator acquisitions
+        for n in range(n_navigator_acq):
+            gx_sign = gx_pre_factor * (-1) ** n
+            seq.add_block(
+                pp.scale_grad(self.gx, gx_sign),
+                self.adc,
+                pp.make_label(label='REV', type='SET', value=gx_sign < 0),
+                pp.make_label(label='SEG', type='SET', value=gx_sign < 0),
+                pp.make_label(label='AVG', type='SET', value=(n + 1) == 3),
+            )
+
+            # Write navigator trajectory to MRD
+            if mrd_dataset is not None:
+                n_samples = self.adc.num_samples
+                traj = np.zeros((n_samples, 2), dtype=np.float32)
+                if gx_sign > 0:
+                    nav_kx = nav_kx_offset + nav_kx_forward
+                else:
+                    nav_kx = nav_kx_offset - nav_kx_forward
+                traj[:, 0] = nav_kx * self.fov * self.oversampling
+                acq = ismrmrd.Acquisition()
+                acq.resize(trajectory_dimensions=2, number_of_samples=n_samples)
+                acq.traj[:] = traj
+                mrd_dataset.append_acquisition(acq)
+
+            # Update kx offset for next navigator
+            nav_kx_offset += gx_sign * self.gx.area
+
+        return seq, mrd_dataset
+
     def add_to_seq(
         self,
         seq: pp.Sequence,
