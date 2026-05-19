@@ -224,7 +224,7 @@ class EpiReadout:
         # Create blip gradient with shortest possible timing
         gy_blip_duration = np.ceil(2 * np.sqrt(delta_ky / system.max_slew) / 10e-6 / 2) * 10e-6 * 2
         gy_blip_half_dur = gy_blip_duration / 2
-        self.gy_blip = pp.make_trapezoid(channel='y', system=self.system, area=-delta_ky, duration=gy_blip_duration)
+        self.gy_blip = pp.make_trapezoid(channel='y', system=self.system, area=delta_ky, duration=gy_blip_duration)
 
         # Create readout gradient
         gx_encoding_area = n_readout * delta_kx * oversampling
@@ -302,7 +302,7 @@ class EpiReadout:
         self.gy_pre = pp.make_trapezoid(
             channel='y',
             system=self.system,
-            area=self.n_phase_enc_pre_center * delta_ky,
+            area=-self.n_phase_enc_pre_center * delta_ky,
         )
         self.gx_pre, self.gy_pre = pp.align(right=[self.gx_pre, self.gy_pre])
 
