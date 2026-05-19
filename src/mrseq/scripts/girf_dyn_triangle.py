@@ -21,7 +21,7 @@ def girf_triangle_kernel(
     dwell_time: float,
     slice_thickness: float,
     slice_pos: Sequence[float],
-    enumerate_coeff: Sequence[float],
+    g_amplitude_coeff: Sequence[float],
     tr: float,
     adc_delay: float,
     rise_times: Sequence[float],
@@ -56,7 +56,7 @@ def girf_triangle_kernel(
         Slice thickness (in meters).
     slice_pos
         List of slice positions (in meters).
-    enumerate_coeff
+    g_amplitude_coeff
         List of amplitude coefficients for gradient encoding.
     tr
         Repetition time (in seconds).
@@ -122,7 +122,7 @@ def girf_triangle_kernel(
 
     # Calculate total number of dynamics for camera
     grad_channels = ['x', 'y', 'z']
-    cam_nr_dynamics = len(enumerate_coeff) * len(slice_pos) * len(grad_channels) * len(rise_times) * n_avg
+    cam_nr_dynamics = len(g_amplitude_coeff) * len(slice_pos) * len(grad_channels) * len(rise_times) * n_avg
     print(f'Total dynamics for camera: {cam_nr_dynamics}')
 
     # Build sequence with nested loops
@@ -134,12 +134,12 @@ def girf_triangle_kernel(
             rise_time_val = np.round(rise_time_val, decimals=6)
 
             for idx_grad, grad_channel in enumerate(['x', 'y', 'z']):
-                grad_label = pp.make_label(type='SET', label='SET', value=idx_grad)
+                grad_label = pp.make_label(type='SET', label='PHS', value=idx_grad)
 
                 for idx_slice_pos, slice_pos_val in enumerate(slice_pos):
                     slice_label = pp.make_label(type='SET', label='SLC', value=idx_slice_pos)
 
-                    for idx_amp_fac, amp_fac in enumerate(enumerate_coeff):
+                    for idx_amp_fac, amp_fac in enumerate(g_amplitude_coeff):
                         amp_fac_label = pp.make_label(type='SET', label='REP', value=idx_amp_fac)
 
                         # Calculate amplitude from coefficient, slew rate, and rise time
@@ -188,6 +188,12 @@ def girf_triangle_kernel(
     seq.set_definition('CameraAcqDuration', cam_acq_duration)
     seq.set_definition('CameraInterleaveTR', cam_interleave_tr)
     seq.set_definition('CameraAcqDelay', cam_acq_delay)
+
+    seq.set_definition('AdcDuration', adc_duration)
+    seq.set_definition('DwellTime', dwell_time)
+    seq.set_definition('SlewRate', system.max_slew)
+    seq.set_definition('AdcDelay', adc_delay)
+    seq.set_definition('GradAmplitudeCoeff', g_amplitude_coeff)
 
     return seq
 
@@ -263,8 +269,8 @@ def main(
     dwell_time = 10e-6  # ADC dwell time [s]
 
     # Define sequence parameters
-    enumerate_coeff = [-1.0, 0.0]  # amplitude coefficients for gradient encoding
-    adc_delay = 1e-3  # eddy current compensation delay [s]
+    g_amplitude_coeff = [-1.0, 0.0]  # amplitude coefficients for gradient encoding
+    adc_delay = 10e-6  # eddy current compensation delay [s]
     rise_times = [5e-5, 6e-5, 7e-5, 8e-5, 9e-5, 1e-4, 1.1e-4, 1.2e-4, 1.3e-4, 1.4e-4, 1.5e-4, 1.6e-4]  # rise times [s]
 
     # Define camera and trigger parameters
@@ -292,7 +298,7 @@ def main(
         dwell_time=dwell_time,
         slice_thickness=slice_thickness,
         slice_pos=slice_pos,
-        enumerate_coeff=enumerate_coeff,
+        g_amplitude_coeff=g_amplitude_coeff,
         tr=tr,
         adc_delay=adc_delay,
         rise_times=rise_times,
