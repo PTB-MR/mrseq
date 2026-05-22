@@ -33,23 +33,27 @@ def test_seq_creation_error_on_short_tr(system_defaults):
         create_seq(system=system_defaults, tr=2e-3, show_plots=False)
 
 
+@pytest.mark.parametrize('add_noise_acq', [True, False])
 @pytest.mark.parametrize('readout_type', ('flyback', 'symmetric'))
-@pytest.mark.parametrize(
-    'add_navigator_acq, add_noise_acq',
-    [(False, False), (True, False), (False, True), (True, True)],
-)
+@pytest.mark.parametrize('add_navigator_acq', [True, False])
+@pytest.mark.parametrize('partial_fourier_factor', [0.75, 1.0])
+@pytest.mark.parametrize('ramp_sampling', [True, False])
+@pytest.mark.parametrize('oversampling', [1, 2])
+@pytest.mark.parametrize('n_slices', [1, 4])
 def test_mrd_trajectory(
     system_defaults,
     readout_type: Literal['flyback', 'symmetric'],
     add_navigator_acq: bool,
     add_noise_acq: bool,
+    partial_fourier_factor: float,
+    ramp_sampling: bool,
+    oversampling: Literal[1, 2],
+    n_slices: int,
 ):
     """Test that the MRD trajectory matches the analytical and PyPulseq trajectories."""
     fov = 200e-3
-    n_readout = 64
-    n_phase_encoding = 64
-    oversampling: Literal[1, 2, 4] = 2
-    n_slices = 1
+    n_readout = 32
+    n_phase_encoding = 32
 
     mrd_file = Path(tempfile.gettempdir()) / 'test_epi2d_se_traj.h5'
     if mrd_file.exists():
@@ -71,8 +75,8 @@ def test_mrd_trajectory(
         rf_apodization=0.5,
         readout_type=readout_type,
         readout_oversampling=oversampling,
-        ramp_sampling=True,
-        partial_fourier_factor=1.0,
+        ramp_sampling=ramp_sampling,
+        partial_fourier_factor=partial_fourier_factor,
         add_spoiler=True,
         add_noise_acq=add_noise_acq,
         add_navigator_acq=add_navigator_acq,
@@ -94,9 +98,9 @@ def test_mrd_trajectory(
         n_phase_encoding=n_phase_encoding,
         bandwidth=100e3,
         oversampling=oversampling,
-        ramp_sampling=True,
+        ramp_sampling=ramp_sampling,
         readout_type=readout_type,
-        partial_fourier_factor=1.0,
+        partial_fourier_factor=partial_fourier_factor,
         pe_enable=True,
         spoiling_enable=True,
     )
@@ -107,30 +111,17 @@ def test_mrd_trajectory(
     n_epi = epi2d.n_phase_enc_total
     assert n_acq == n_noise + (n_pre_per_slice + n_epi) * n_slices
 
-    # Compare noise + navigator against calculate_kspace
+    # Compare Pulseq trajectories against MRD trajectories including noise and navigator acquisitions
     k_traj_adc, _, _, _, _ = seq.calculate_kspace()
-    n_pre_total = n_noise + n_pre_per_slice * n_slices
-    for i in range(n_pre_total):
+    for i in range(n_acq):
         start = i * n_samples
         end = start + n_samples
         kx_calc = (k_traj_adc[0, start:end] * fov * oversampling).astype(np.float32)
         ky_calc = (k_traj_adc[1, start:end] * fov).astype(np.float32)
-        np.testing.assert_array_equal(traj_mrd[i][:, 0], kx_calc)
-        np.testing.assert_array_equal(traj_mrd[i][:, 1], ky_calc)
+        np.testing.assert_array_almost_equal(traj_mrd[i][:, 0], kx_calc, decimal=10)
+        np.testing.assert_array_almost_equal(traj_mrd[i][:, 1], ky_calc, decimal=10)
 
-    # Compare navigator trajectories per slice against calculate_kspace
-    for s in range(n_slices):
-        for n in range(n_nav):
-            mrd_idx = n_noise + s * (n_nav + n_epi) + n
-            calc_idx = n_noise + s * (n_nav + n_epi) + n
-            start = calc_idx * n_samples
-            end = start + n_samples
-            kx_calc = (k_traj_adc[0, start:end] * fov * oversampling).astype(np.float32)
-            ky_calc = (k_traj_adc[1, start:end] * fov).astype(np.float32)
-            np.testing.assert_array_equal(traj_mrd[mrd_idx][:, 0], kx_calc)
-            np.testing.assert_array_equal(traj_mrd[mrd_idx][:, 1], ky_calc)
-
-    # Compare EPI readout lines against analytical trajectory
+    # Compare analytical trajectories against MRD trajectories without noise and navigator acquisitions
     kx_analytical, ky_analytical = epi2d.calculate_trajectory()
     for s in range(n_slices):
         for pe_idx in range(n_epi):
