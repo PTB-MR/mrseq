@@ -1,7 +1,5 @@
 """Tests for EPI SE sequence."""
 
-import tempfile
-from pathlib import Path
 from typing import Literal
 
 import ismrmrd
@@ -49,15 +47,14 @@ def test_mrd_trajectory(
     ramp_sampling: bool,
     oversampling: Literal[1, 2],
     n_slices: int,
+    tmp_path,
 ):
     """Test that the MRD trajectory matches the analytical and PyPulseq trajectories."""
     fov = 200e-3
     n_readout = 32
     n_phase_encoding = 32
 
-    mrd_file = Path(tempfile.gettempdir()) / 'test_epi2d_se_traj.h5'
-    if mrd_file.exists():
-        mrd_file.unlink()
+    mrd_file = tmp_path / 'test_epi2d_se_traj.h5'
 
     seq, _, _ = epi2d_se_kernel(
         system=system_defaults,
@@ -88,7 +85,6 @@ def test_mrd_trajectory(
     n_acq = ds.number_of_acquisitions()
     traj_mrd = [ds.read_acquisition(i).traj.copy() for i in range(n_acq)]
     ds.close()
-    mrd_file.unlink()
 
     # Recreate EpiReadout for reference
     epi2d = EpiReadout(
