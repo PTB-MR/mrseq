@@ -297,7 +297,7 @@ class EpiReadout:
         self.gx_pre = pp.make_trapezoid(
             channel='x',
             system=self.system,
-            area=-self.gx.area / 2 - delta_kx / 2,
+            area=-self.gx.area / 2,
         )
         self.gy_pre = pp.make_trapezoid(
             channel='y',
