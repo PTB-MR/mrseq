@@ -42,7 +42,7 @@ dependencies = [
     "numpy>=1.23,<3.0",
     "matplotlib<4.0",
     "pypulseq>=1.4.1",
-    "ismrmrd>=1.14.1",
+    "ismrmrd>=1.14.1,<1.15",
 ]
 
 [project.optional-dependencies]

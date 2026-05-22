@@ -15,9 +15,9 @@
 
 We are looking forward to your contributions via Pull-Requests.
 
-### Installation for developers
+## Installation for developers
 
-#### Prerequisites for Windows
+### Prerequisites for Windows
 
 Before installing `MRseq` with development dependencies on Windows, you need:
 
@@ -29,7 +29,7 @@ Before installing `MRseq` with development dependencies on Windows, you need:
 
 2. **Rust toolchain** (automatically installed by MRzeroCore if not present)
 
-#### Installation steps
+### Installation steps
 
 1. Clone the `MRseq` repository
 2. Create/select a python environment
@@ -37,7 +37,7 @@ Before installing `MRseq` with development dependencies on Windows, you need:
 4. Setup pre-commit hook: ``` pre-commit install ```
 
 
-### Licensing and Dependencies
+## Licensing and Dependencies
 
 The core source code of `MRseq` is licensed under the **Apache-2.0 license**. 
 
@@ -45,3 +45,21 @@ For quality control and demonstration purposes, the notebooks in the `examples/`
 
 **Important for Commercial Users:**
 The AGPL dependency is listed only as an optional dev dependency. Installing this package via `pip install mrseq` **does not** install the AGPL library. Your usage of the core library remains subject to the permissive Apache-2.0 terms, unaffected by the licensing of the test suite or examples.
+
+## Contact
+For questions or support, please contact us:
+
+> Christoph Kolbitsch  
+> Physikalisch-Technische Bundesanstalt (PTB)  
+> Abbestraße 2-12  
+> 10587 Berlin, Germany  
+> christoph.kolbitsch@ptb.de
+
+> Patrick Schünke  
+> NVision Quantum Technologies GmbH  
+> Wolfgang-Paul-Straße 2  
+> 89081 Ulm, Germany  
+> patrick.schuenke@nvision-quantum.com
+
+## Acknowledgments
+We would like to thank [NVision Quantum Technologies GmbH](https://www.nvision-quantum.com/) for their contributions to this project.
