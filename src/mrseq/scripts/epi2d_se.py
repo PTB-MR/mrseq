@@ -299,11 +299,7 @@ def epi2d_se_kernel(
             )
 
             # add gy_pre and reset labels
-            seq.add_block(
-                pp.scale_grad(epi2d.gy_pre, -1),
-                pp.make_label(label='NAV', type='SET', value=0),
-                pp.make_label(label='AVG', type='SET', value=0),
-            )
+            seq.add_block(pp.scale_grad(epi2d.gy_pre, -1), pp.make_label(label='NAV', type='SET', value=0))
         else:
             seq.add_block(gzr, pp.scale_grad(epi2d.gx_pre, -1), pp.scale_grad(epi2d.gy_pre, -1))
 

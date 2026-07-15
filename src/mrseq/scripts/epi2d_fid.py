@@ -239,11 +239,7 @@ def epi2d_fid_kernel(
             seq.add_block(pp.make_delay(te_delay))
 
             # add gy_pre and reset labels
-            seq.add_block(
-                epi2d.gy_pre,
-                pp.make_label(label='NAV', type='SET', value=0),
-                pp.make_label(label='AVG', type='SET', value=0),
-            )
+            seq.add_block(epi2d.gy_pre, pp.make_label(label='NAV', type='SET', value=0))
         else:
             # add echo time delay
             seq.add_block(pp.make_delay(te_delay))
