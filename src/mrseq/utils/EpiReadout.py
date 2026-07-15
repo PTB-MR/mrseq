@@ -648,7 +648,6 @@ class EpiReadout:
                 self.adc,
                 pp.make_label(label='REV', type='SET', value=gx_sign < 0),
                 pp.make_label(label='SEG', type='SET', value=gx_sign < 0),
-                pp.make_label(label='AVG', type='SET', value=(n + 1) == 3),
             )
 
             # Write navigator trajectory to MRD
