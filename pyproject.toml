@@ -54,7 +54,7 @@ tests = [
     "pytest-cov",
     "pytest-xdist",
 ]
-examples = ["mrzerocore>=0.4.3", "mrpro", "cmap", "jupyter-book<2.0"]
+examples = ["mrzerocore>=0.4.3,<1.0.0", "mrpro", "cmap", "jupyter-book<2.0"]
 dev = ["mrseq[tests, examples]"]
 
 [project.urls]
