@@ -331,7 +331,7 @@ class EpiReadout:
             elif self.readout_type == 'flyback':
                 self.gy_blip.waveform *= 0
 
-        # Create spoiler gradient 
+        # Create spoiler gradient
         if self.spoiling_enable:
             self.gz_spoil = pp.make_trapezoid(channel='z', system=self.system, area=4 * delta_ky * n_readout)
 
