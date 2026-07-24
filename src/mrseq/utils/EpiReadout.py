@@ -317,7 +317,6 @@ class EpiReadout:
         else:
             raise NotImplementedError('Currently, only "symmetric" and "flyback" readout types are supported.')
 
-        # Disable phase encoding if self.pe_enable is False
         if not self.pe_enable:
             self.gy_pre.amplitude = 0
             if (
@@ -332,7 +331,7 @@ class EpiReadout:
             elif self.readout_type == 'flyback':
                 self.gy_blip.waveform *= 0
 
-        # Create spoiler gradient if spoiling is enabled
+        # Create spoiler gradient 
         if self.spoiling_enable:
             self.gz_spoil = pp.make_trapezoid(channel='z', system=self.system, area=4 * delta_ky * n_readout)
 

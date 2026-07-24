@@ -40,7 +40,7 @@ def epi2d_se_kernel(
     add_navigator_acq: bool,
     mrd_header_file: str | Path | None,
 ) -> tuple[pp.Sequence, float, float]:
-    """Generate a 2D Echo Planar Imaging (EPI) sequence.
+    """Generate a 2D Echo Planar Imaging (EPI) spin echo (SE) sequence.
 
     Parameters
     ----------
@@ -49,7 +49,7 @@ def epi2d_se_kernel(
     te
         Desired echo time (TE) (in seconds). Minimum echo time is used if set to None.
     tr
-        Desired repetition time (TR) (in seconds).
+        Desired repetition time (TR) (in seconds). Minimum repetition time is used if set to None.
     fov_xy
         Field of view in x and y direction (in meters).
     n_readout
@@ -134,7 +134,7 @@ def epi2d_se_kernel(
         use='excitation',
     )
 
-    # create refocussing pulse and gradients if echo type is 'SE (spin echo)
+    # create refocussing pulse and gradients
     rf180, gz180, _ = pp.make_sinc_pulse(
         flip_angle=np.pi,
         system=system,
@@ -287,7 +287,7 @@ def epi2d_se_kernel(
 
         # add navigator scans for ghost correction
         if add_navigator_acq:
-            # SE: invert pre-winder for even number of navigators
+            # invert pre-winder for even number of navigators
             gx_pre_factor = -1 if n_navigator_acq % 2 == 0 else 1
             seq, prot = epi2d.add_navigator_to_seq(
                 seq,
