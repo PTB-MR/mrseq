@@ -185,7 +185,7 @@ class EpiReadout:
         adc_freq_offset
             Frequency offset for the ADC.
         pe_enable
-            Enable phase encoding (useful for calibration scans if False).
+            Enable phase encoding (set to False for calibration scans).
         spoiling_enable
             Enable spoiling gradients.
         """
