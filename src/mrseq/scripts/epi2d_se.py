@@ -280,7 +280,6 @@ def epi2d_se_kernel(
 
         # set frequency offset for current slice
         rf.freq_offset = gz.amplitude * slice_thickness * (slice_ - (n_slices - 1) / 2)
-        # rf.phase_offset = - 2 * np.pi * rf.freq_offset * pp.calc_rf_center(rf)
 
         # add slice selective excitation pulse and set slice label
         seq.add_block(rf, gz, slice_label)
