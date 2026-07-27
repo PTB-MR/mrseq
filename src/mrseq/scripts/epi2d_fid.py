@@ -63,11 +63,11 @@ def epi2d_fid_kernel(
     n_slices
         Number of slices.
     rf_duration
-        Duration of the rf excitation pulse (in seconds)
+        Duration of the rf excitation pulse (in seconds).
     rf_flip_angle
-        Flip angle of rf excitation pulse (in degrees)
+        Flip angle of rf excitation pulse (in degrees).
     rf_bwt
-        Bandwidth-time product of rf excitation pulse (in Hz * seconds)
+        Bandwidth-time product of rf excitation pulse (in Hz * seconds).
     rf_apodization
         Apodization factor of rf excitation pulse.
     readout_type
@@ -93,7 +93,7 @@ def epi2d_fid_kernel(
     Returns
     -------
     seq
-        PyPulseq Sequence object
+        PyPulseq Sequence object.
     min_te
         Shortest possible echo time.
     min_tr
