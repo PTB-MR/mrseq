@@ -278,6 +278,11 @@ class EpiReadout:
             system=self.system,
         )
 
+        print(
+            f'Receiver bandwidth: {int(1.0 / (adc_dwell * adc_samples))} Hz/pixel '
+            f'(Readout duration: {self.adc.num_samples * self.adc.dwell * 1000:.3f} ms).'
+        )
+
         # Create and align pre-phaser gradients considering partial fourier factor
         # determine the number of "PE" lines after (and including) k-space center (independent of partial fourier)
         self.n_phase_enc_post_center = int(np.ceil(self.n_phase_encoding / 2 + 1))
