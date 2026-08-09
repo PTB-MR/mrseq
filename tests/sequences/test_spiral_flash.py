@@ -2,7 +2,7 @@
 
 import numpy as np
 import pytest
-from mrseq.scripts.spiral_flash import main as create_seq
+from mrseq.sequences.spiral_flash import main as create_seq
 
 EXPECTED_DUR = 0.70588  # defined 2026-02-10
 

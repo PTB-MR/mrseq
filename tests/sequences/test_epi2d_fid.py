@@ -5,8 +5,8 @@ from typing import Literal
 import ismrmrd
 import numpy as np
 import pytest
-from mrseq.scripts.epi2d_fid import epi2d_fid_kernel
-from mrseq.scripts.epi2d_fid import main as create_seq
+from mrseq.sequences.epi2d_fid import epi2d_fid_kernel
+from mrseq.sequences.epi2d_fid import main as create_seq
 from mrseq.utils.EpiReadout import EpiReadout
 
 EXPECTED_DUR = 0.0389  # defined 2026-02-28

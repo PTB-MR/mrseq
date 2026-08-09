@@ -1,10 +1,9 @@
-"""Tests for Gold standard multi-echo SE sequence."""
+"""Tests for Gold standard SE-based inversion recovery sequence."""
 
-import numpy as np
 import pytest
-from mrseq.scripts.t2_multi_echo_se_single_line import main as create_seq
+from mrseq.sequences.t1_inv_rec_se_single_line import main as create_seq
 
-EXPECTED_DUR = 5120.000970  # defined 2025-02-06
+EXPECTED_DUR = 7168.000320  # defined 2025-02-03
 
 
 def test_default_seq_duration(system_defaults):
@@ -17,7 +16,7 @@ def test_default_seq_duration(system_defaults):
 def test_seq_creation_error_on_short_te(system_defaults):
     """Test if error is raised on too short echo time."""
     with pytest.raises(ValueError):
-        create_seq(system=system_defaults, echo_times=np.array([1e-3, 2e-3]), show_plots=False)
+        create_seq(system=system_defaults, te=1e-3, show_plots=False)
 
 
 def test_seq_creation_error_on_short_tr(system_defaults):
@@ -26,10 +25,11 @@ def test_seq_creation_error_on_short_tr(system_defaults):
         create_seq(system=system_defaults, tr=5e-3, show_plots=False)
 
 
-def test_seq_duration_vary_params_without_changing_duration(system_defaults):
+def test_seq_duration_vary_params_without_effect(system_defaults):
     """Test if sequence duration is as expected."""
     seq, _ = create_seq(
         system=system_defaults,
+        te=10e-3,  # default None
         fov_xy=192e-3,  # default 128e-3
         n_readout=192,  # default 128
         slice_thickness=6e-3,  # default 8e-3

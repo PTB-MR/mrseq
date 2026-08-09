@@ -197,6 +197,14 @@ def t1_inv_rec_gre_single_line_kernel(
 
             seq.add_block(pp.make_delay(tr_delay))
 
+    # write all required parameters in the seq-file header/definitions
+    seq.set_definition('FOV', [fov_xy, fov_xy, slice_thickness])
+    seq.set_definition('ReconMatrix', (n_readout, n_phase_encoding, 1))
+    seq.set_definition('SliceThickness', slice_thickness)
+    seq.set_definition('TE', te or min_te)
+    seq.set_definition('TR', tr)
+    seq.set_definition('TI', inversion_times.tolist())
+
     return seq, time_to_first_tr_block, min_te
 
 
@@ -273,7 +281,7 @@ def main(
     rf_bwt = 4  # bandwidth-time product of rf excitation pulse [Hz*s]
     rf_apodization = 0.5  # apodization factor of rf excitation pulse
 
-    seq, time_to_first_tr_block, min_te = t1_inv_rec_gre_single_line_kernel(
+    seq, time_to_first_tr_block, _min_te = t1_inv_rec_gre_single_line_kernel(
         system=system,
         inversion_times=inversion_times,
         te=te,
@@ -311,14 +319,6 @@ def main(
     filename = (
         f'{Path(__file__).stem}_{int(fov_xy * 1000)}fov_{n_readout}nx_{n_phase_encoding}ny_{len(inversion_times)}TIs'
     )
-
-    # write all required parameters in the seq-file header/definitions
-    seq.set_definition('FOV', [fov_xy, fov_xy, slice_thickness])
-    seq.set_definition('ReconMatrix', (n_readout, n_phase_encoding, 1))
-    seq.set_definition('SliceThickness', slice_thickness)
-    seq.set_definition('TE', te or min_te)
-    seq.set_definition('TR', tr)
-    seq.set_definition('TI', inversion_times.tolist())
 
     # save seq-file to disk
     output_path = Path.cwd() / 'output'
