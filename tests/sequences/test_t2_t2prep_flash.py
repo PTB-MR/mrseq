@@ -2,12 +2,12 @@
 
 import numpy as np
 import pytest
-from mrseq.scripts.t2star_multi_echo_flash import main as create_seq
+from mrseq.sequences.t2_t2prep_flash import main as create_seq
 from mrseq.utils.system_defaults import sys_a
 from mrseq.utils.system_defaults import sys_b
 from mrseq.utils.system_defaults import sys_c
 
-EXPECTED_DUR = 2.72448  # defined 2026-07-24
+EXPECTED_DUR = 8.17667  # defined 2026-01-26
 
 
 def test_default_seq_duration(system_defaults):
@@ -22,7 +22,7 @@ def test_seq_duration(system):
     """Test system dependance of sequence."""
     seq, _ = create_seq(system=system, show_plots=False)
     duration = seq.duration()[0]
-    assert np.abs(duration - EXPECTED_DUR) / EXPECTED_DUR < 0.1
+    assert np.abs(duration - EXPECTED_DUR) / EXPECTED_DUR < 0.05
 
 
 def test_seq_creation_error_on_short_te(system_defaults):
@@ -37,9 +37,14 @@ def test_seq_creation_error_on_short_tr(system_defaults):
         create_seq(system=system_defaults, tr=2e-3, show_plots=False)
 
 
-def test_seq_creation_error_on_wrong_partial_echo_factor(system_defaults):
-    """Test if error is raised on wrong partial echo factor."""
-    with pytest.raises(ValueError):
-        create_seq(system=system_defaults, partial_echo_factor=1.1, show_plots=False)
-    with pytest.raises(ValueError):
-        create_seq(system=system_defaults, partial_echo_factor=0.4, show_plots=False)
+def test_seq_duration_vary_params_without_effect(system_defaults):
+    """Test if sequence duration is as expected."""
+    seq, _ = create_seq(
+        system=system_defaults,
+        t2_prep_echo_times=np.array([0.05, 0.1, 0.2]),
+        show_plots=False,
+        test_report=False,
+        timing_check=False,
+    )
+    duration = seq.duration()[0]
+    assert duration == pytest.approx(EXPECTED_DUR)

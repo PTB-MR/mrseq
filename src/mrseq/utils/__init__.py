@@ -3,7 +3,7 @@ from mrseq.utils.sequence_helper import round_to_raster
 from mrseq.utils.sequence_helper import write_sequence
 from mrseq.utils.sequence_helper import make_trapezoid_readout
 from mrseq.utils.system_defaults import sys_defaults
-from mrseq.utils.trajectory import cartesian_phase_encoding
-from mrseq.utils.trajectory import spiral_acquisition
-from mrseq.utils.trajectory import MultiEchoAcquisition
 from mrseq.utils.vds import variable_density_spiral_trajectory
+from mrseq.utils.spiral_sampling import spiral_acquisition
+from mrseq.utils.cartesian_sampling import cartesian_phase_encoding
+from mrseq.utils.MultiEchoAcquisition import MultiEchoAcquisition

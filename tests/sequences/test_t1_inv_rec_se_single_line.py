@@ -1,13 +1,13 @@
-"""Tests for 3D FLASH sequence with golden radial phase encoding."""
+"""Tests for Gold standard SE-based inversion recovery sequence."""
 
 import numpy as np
 import pytest
-from mrseq.scripts.grpe_flash_dixon import main as create_seq
+from mrseq.sequences.t1_inv_rec_se_single_line import main as create_seq
 from mrseq.utils.system_defaults import sys_a
 from mrseq.utils.system_defaults import sys_b
 from mrseq.utils.system_defaults import sys_c
 
-EXPECTED_DUR = 14.83853  # defined 2026-07-24
+EXPECTED_DUR = 7168.000320  # defined 2025-02-03
 
 
 def test_default_seq_duration(system_defaults):
@@ -22,7 +22,13 @@ def test_seq_duration(system):
     """Test system dependance of sequence."""
     seq, _ = create_seq(system=system, show_plots=False)
     duration = seq.duration()[0]
-    assert np.abs(duration - EXPECTED_DUR) / EXPECTED_DUR < 0.16
+    assert np.abs(duration - EXPECTED_DUR) / EXPECTED_DUR < 0.05
+
+
+def test_seq_creation_error_on_short_te(system_defaults):
+    """Test if error is raised on too short echo time."""
+    with pytest.raises(ValueError):
+        create_seq(system=system_defaults, te=1e-3, show_plots=False)
 
 
 def test_seq_creation_error_on_short_tr(system_defaults):
@@ -35,26 +41,13 @@ def test_seq_duration_vary_params_without_effect(system_defaults):
     """Test if sequence duration is as expected."""
     seq, _ = create_seq(
         system=system_defaults,
-        n_rpe_points_per_shot=4,  # default 8
+        te=10e-3,  # default None
+        fov_xy=192e-3,  # default 128e-3
+        n_readout=192,  # default 128
+        slice_thickness=6e-3,  # default 8e-3
         show_plots=False,
         test_report=False,
         timing_check=False,
     )
     duration = seq.duration()[0]
     assert duration == pytest.approx(EXPECTED_DUR)
-
-
-def test_seq_creation_error_on_wrong_partial_echo_factor(system_defaults):
-    """Test if error is raised on wrong partial echo factor."""
-    with pytest.raises(ValueError):
-        create_seq(system=system_defaults, partial_echo_factor=1.1, show_plots=False)
-    with pytest.raises(ValueError):
-        create_seq(system=system_defaults, partial_echo_factor=0.4, show_plots=False)
-
-
-def test_seq_creation_error_on_wrong_partial_fourier_factor(system_defaults):
-    """Test if error is raised on wrong partial Fourier factor."""
-    with pytest.raises(ValueError):
-        create_seq(system=system_defaults, partial_fourier_factor=1.1, show_plots=False)
-    with pytest.raises(ValueError):
-        create_seq(system=system_defaults, partial_fourier_factor=0.4, show_plots=False)

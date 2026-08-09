@@ -1,13 +1,13 @@
-"""Tests for spiral FLASH sequence."""
+"""Tests for radial FLASH sequence."""
 
 import numpy as np
 import pytest
-from mrseq.scripts.spiral_flash import main as create_seq
+from mrseq.sequences.radial_flash import main as create_seq
 from mrseq.utils.system_defaults import sys_a
 from mrseq.utils.system_defaults import sys_b
 from mrseq.utils.system_defaults import sys_c
 
-EXPECTED_DUR = 0.70588  # defined 2026-02-10
+EXPECTED_DUR = 0.69123  # defined 2026-07-24
 
 
 def test_default_seq_duration(system_defaults):
@@ -22,13 +22,13 @@ def test_seq_duration(system):
     """Test system dependance of sequence."""
     seq, _ = create_seq(system=system, show_plots=False)
     duration = seq.duration()[0]
-    assert np.abs(duration - EXPECTED_DUR) / EXPECTED_DUR < 0.05
+    assert np.abs(duration - EXPECTED_DUR) / EXPECTED_DUR < 0.08
 
 
 def test_seq_creation_error_on_short_te(system_defaults):
     """Test if error is raised on too short echo time."""
     with pytest.raises(ValueError):
-        create_seq(system=system_defaults, te=5e-4, show_plots=False)
+        create_seq(system=system_defaults, te=1e-3, show_plots=False)
 
 
 def test_seq_creation_error_on_short_tr(system_defaults):

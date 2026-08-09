@@ -1,13 +1,13 @@
-"""Tests for Gold standard SE-based inversion recovery sequence."""
+"""Tests for Gold standard SE-based T1rho mapping sequence."""
 
 import numpy as np
 import pytest
-from mrseq.scripts.t1_inv_rec_se_single_line import main as create_seq
+from mrseq.sequences.t1rho_se_single_line import main as create_seq
 from mrseq.utils.system_defaults import sys_a
 from mrseq.utils.system_defaults import sys_b
 from mrseq.utils.system_defaults import sys_c
 
-EXPECTED_DUR = 7168.000320  # defined 2025-02-03
+EXPECTED_DUR = 3072.000000  # defined 2025-02-20
 
 
 def test_default_seq_duration(system_defaults):
