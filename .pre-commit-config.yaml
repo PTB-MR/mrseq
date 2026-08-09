@@ -25,14 +25,14 @@ repos:
       files: examples/.*\.ipynb$
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.22
+    rev: v0.16.1
     hooks:
       - id: ruff # linter
         args: [--fix]
       - id: ruff-format # formatter
 
   - repo: https://github.com/crate-ci/typos
-    rev: v1.48.0
+    rev: v1.49.0
     hooks:
       - id: typos
 
@@ -48,6 +48,7 @@ repos:
           - types-requests
           - typing-extensions
           - pytest
+          - matplotlib
           - scipy-stubs
 
 ci:
