@@ -5,6 +5,7 @@ chapters:
   sections:
   - file: radial_flash
   - file: spiral_flash
+  - file: epi2d
   - file: grpe_flash_dixon
 - file: relaxometry.md
   sections:

@@ -42,7 +42,8 @@ dependencies = [
     "numpy>=1.23,<3.0",
     "matplotlib<4.0",
     "pypulseq>=1.4.1",
-    "ismrmrd==1.14.2",
+    "ismrmrd>=1.14.1",
+    "raw2ismrmrd>=0.260630",
 ]
 
 [project.optional-dependencies]
@@ -54,8 +55,8 @@ tests = [
     "pytest-cov",
     "pytest-xdist",
 ]
-examples = ["mrzerocore>=1.0.3", "mrpro", "cmap", "jupyter-book<2.0"]
-dev = ["mrseq[tests, examples]"]
+examples = ["mrzerocore>=1.0.3", "mrpro", "cmap"]
+dev = ["mrseq[tests, examples]", "jupyter-book<2.0"]
 
 [project.urls]
 "repository" = "https://github.com/PTB-MR/mrseq"
@@ -137,5 +138,5 @@ warn_unused_ignores = true
 
 
 [[tool.mypy.overrides]]
-module = ["ismrmrd.*", "pypulseq.*"]
+module = ["ismrmrd.*", "pypulseq.*", "raw2ismrmrd.*"]
 ignore_missing_imports = true
