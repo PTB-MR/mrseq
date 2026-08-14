@@ -211,8 +211,6 @@ def t2star_multi_echo_flash_kernel(
             recon_matrix=MatrixSize(n_x=n_readout, n_y=n_readout, n_z=1),
             dwell_time=multi_echo_gradient._adc.dwell,
             k1_limits=Limits(min=0, max=len(pe_steps), center=0),
-            k2_limits=Limits(),
-            slice_limits=Limits(),
         )
 
         # write header to file

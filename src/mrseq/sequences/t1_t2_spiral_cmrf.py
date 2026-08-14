@@ -186,9 +186,7 @@ def t1_t2_spiral_cmrf_kernel(
             encoding_matrix=MatrixSize(n_x=int(n_readout), n_y=int(n_readout), n_z=1),
             recon_matrix=MatrixSize(n_x=n_readout, n_y=n_readout, n_z=1),
             dwell_time=adc.dwell,
-            slice_limits=Limits(min=0, max=1, center=0),
             k1_limits=Limits(min=0, max=len(gx), center=0),
-            k2_limits=Limits(min=0, max=1, center=0),
         )
 
         # write header to file
