@@ -11,6 +11,7 @@ from raw2ismrmrd.utils import MatrixSize
 from raw2ismrmrd.utils import create_header
 
 from mrseq.utils import find_gx_flat_time_on_adc_raster
+from mrseq.utils import make_trapezoid_readout
 from mrseq.utils import round_to_raster
 from mrseq.utils import sys_defaults
 from mrseq.utils import write_sequence
@@ -122,7 +123,7 @@ def radial_flash_kernel(
     # create readout gradient and ADC
     delta_k = 1 / (fov_xy * readout_oversampling)
     n_readout_with_oversampling = int(n_readout * readout_oversampling)
-    gx = pp.make_trapezoid(
+    gx = make_trapezoid_readout(
         channel='x', flat_area=n_readout_with_oversampling * delta_k, flat_time=gx_flat_time, system=system
     )
     n_readout_with_oversampling = n_readout_with_oversampling + np.mod(n_readout_with_oversampling, 2)  # make even
@@ -239,20 +240,20 @@ def radial_flash_kernel(
             if te_delay > 0:
                 seq.add_block(gzr)
                 seq.add_block(pp.make_delay(te_delay))
-                seq.add_block(*pp.rotate(gx_pre, angle=rotation_angle_rad, axis='z'))
+                seq.add_block(*pp.rotate(gx_pre, angle=rotation_angle_rad, axis='z', system=system))
             else:
-                seq.add_block(*pp.rotate(gx_pre, gzr, angle=rotation_angle_rad, axis='z'))
+                seq.add_block(*pp.rotate(gx_pre, gzr, angle=rotation_angle_rad, axis='z', system=system))
 
             # rotate and add the readout gradient and ADC
             if spoke_ >= 0:
                 labels = []
                 labels.append(pp.make_label(label='LIN', type='SET', value=spoke_))
                 labels.append(pp.make_label(label='SLC', type='SET', value=slice_))
-                seq.add_block(*pp.rotate(gx, adc, angle=rotation_angle_rad, axis='z'), *labels)
+                seq.add_block(*pp.rotate(gx, adc, angle=rotation_angle_rad, axis='z', system=system), *labels)
             else:
                 seq.add_block(pp.make_delay(pp.calc_duration(gx, adc)))
 
-            seq.add_block(*pp.rotate(gx_post, gz_spoil, angle=rotation_angle_rad, axis='z'))
+            seq.add_block(*pp.rotate(gx_post, gz_spoil, angle=rotation_angle_rad, axis='z', system=system))
 
             # add delay in case TR > min_TR
             if tr_delay > 0:
@@ -362,7 +363,7 @@ def main(
     # define ADC and gradient timing
     n_readout_with_oversampling = int(n_readout * readout_oversampling)
     adc_dwell_time = 1.0 / (receiver_bandwidth_per_pixel * n_readout_with_oversampling)
-    gx_pre_duration = 1.0e-3  # duration of readout pre-winder gradient [s]
+    gx_pre_duration = 0.8e-3  # duration of readout pre-winder gradient [s]
     gx_flat_time, adc_dwell_time = find_gx_flat_time_on_adc_raster(
         n_readout_with_oversampling, adc_dwell_time, system.grad_raster_time, system.adc_raster_time
     )

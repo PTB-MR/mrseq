@@ -408,8 +408,9 @@ def main(
     rf_apodization = 0.5  # apodization factor of rf excitation pulse
     readout_oversampling = 2  # readout oversampling factor, commonly 2. This reduces aliasing artifacts.
 
-    # this is just approximately, the final calculation is done in the kernel
+    # the number of readout samples should always be even
     n_readout_with_oversampling = int(n_readout * readout_oversampling * partial_echo_factor)
+    n_readout_with_oversampling += np.mod(n_readout_with_oversampling, 2)
     # define ADC and gradient timing
     adc_dwell_time = 1.0 / (receiver_bandwidth_per_pixel * n_readout_with_oversampling)
     gx_pre_duration = 0.8e-3  # duration of readout pre-winder gradient [s]
