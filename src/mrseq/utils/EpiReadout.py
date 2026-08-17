@@ -222,8 +222,10 @@ class EpiReadout:
         self.gz_spoil = None
 
         # Create blip gradient with shortest possible timing
+        gy_blip_duration = 2 * np.sqrt(delta_ky / system.max_slew)
+        # Blip gradient can at least be the 2 * adc dead time
         gy_blip_duration = round_to_raster(
-            2 * np.sqrt(delta_ky / system.max_slew), 2 * system.grad_raster_time, method='ceil'
+            max(gy_blip_duration, 2 * system.adc_dead_time), 2 * system.grad_raster_time, method='ceil'
         )
         gy_blip_half_dur = gy_blip_duration / 2
         self.gy_blip = pp.make_trapezoid(channel='y', system=self.system, area=delta_ky, duration=gy_blip_duration)

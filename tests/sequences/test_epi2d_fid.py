@@ -27,7 +27,7 @@ def test_seq_duration(system):
     """Test system dependance of sequence."""
     seq, _ = create_seq(system=system, show_plots=False)
     duration = seq.duration()[0]
-    assert np.abs(duration - EXPECTED_DUR) / EXPECTED_DUR < 0.08
+    assert np.abs(duration - EXPECTED_DUR) / EXPECTED_DUR < 0.35
 
 
 def test_seq_creation_error_on_short_te(system_defaults):
