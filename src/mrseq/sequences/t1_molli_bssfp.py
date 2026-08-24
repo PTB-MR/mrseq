@@ -8,6 +8,7 @@ import pypulseq as pp
 from mrseq.preparations import add_t1_inv_prep
 from mrseq.utils import cartesian_phase_encoding
 from mrseq.utils import find_gx_flat_time_on_adc_raster
+from mrseq.utils import make_trapezoid_readout
 from mrseq.utils import round_to_raster
 from mrseq.utils import sys_defaults
 from mrseq.utils import write_sequence
@@ -103,7 +104,7 @@ def t1_molli_bssfp_kernel(
 
     # create readout gradient and ADC
     delta_k = 1 / fov_xy
-    gx = pp.make_trapezoid(channel='x', flat_area=n_readout * delta_k, flat_time=gx_flat_time, system=system)
+    gx = make_trapezoid_readout(channel='x', flat_area=n_readout * delta_k, flat_time=gx_flat_time, system=system)
     n_readout_with_oversampling = int(n_readout * readout_oversampling)
     n_readout_with_oversampling = n_readout_with_oversampling + np.mod(n_readout_with_oversampling, 2)  # make even
     adc = pp.make_adc(num_samples=n_readout_with_oversampling, duration=gx.flat_time, delay=gx.rise_time, system=system)
@@ -386,7 +387,7 @@ def main(
         inversion_times = np.asarray([0.1, 0.18])
 
     # define settings of rf excitation pulse
-    rf_duration = 0.5e-3  # duration of the rf excitation pulse [s]
+    rf_duration = 0.64e-3  # duration of the rf excitation pulse [s]
     rf_flip_angle = 35  # flip angle of rf excitation pulse [°]
     rf_bwt = 1.5  # bandwidth-time product of rf excitation pulse [Hz*s]
     rf_apodization = 0.5  # apodization factor of rf excitation pulse
@@ -397,7 +398,7 @@ def main(
     adc_dwell_time = round_to_raster(
         1.0 / (receiver_bandwidth_per_pixel * n_readout_with_oversampling), system.adc_raster_time
     )
-    gx_pre_duration = 0.72e-3  # duration of readout pre-winder gradient [s]
+    gx_pre_duration = 0.8e-3  # duration of readout pre-winder gradient [s]
     gx_flat_time, adc_dwell_time = find_gx_flat_time_on_adc_raster(
         n_readout_with_oversampling, adc_dwell_time, system.grad_raster_time, system.adc_raster_time
     )

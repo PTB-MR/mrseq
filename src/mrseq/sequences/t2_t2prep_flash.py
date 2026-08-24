@@ -8,6 +8,7 @@ import pypulseq as pp
 from mrseq.preparations.t2_prep import add_t2_prep
 from mrseq.utils import cartesian_phase_encoding
 from mrseq.utils import find_gx_flat_time_on_adc_raster
+from mrseq.utils import make_trapezoid_readout
 from mrseq.utils import round_to_raster
 from mrseq.utils import sys_defaults
 from mrseq.utils import write_sequence
@@ -120,7 +121,7 @@ def t2_t2prep_flash_kernel(
 
     # create readout gradient and ADC
     delta_k = 1 / fov_xy
-    gx = pp.make_trapezoid(channel='x', flat_area=n_readout * delta_k, flat_time=gx_flat_time, system=system)
+    gx = make_trapezoid_readout(channel='x', flat_area=n_readout * delta_k, flat_time=gx_flat_time, system=system)
     n_readout_with_oversampling = int(n_readout * readout_oversampling)
     n_readout_with_oversampling = n_readout_with_oversampling + np.mod(n_readout_with_oversampling, 2)  # make even
     adc = pp.make_adc(num_samples=n_readout_with_oversampling, duration=gx.flat_time, delay=gx.rise_time, system=system)
