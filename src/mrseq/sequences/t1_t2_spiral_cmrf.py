@@ -24,6 +24,7 @@ def t1_t2_spiral_cmrf_kernel(
     t2_prep_echo_times: np.ndarray,
     tr: float | None,
     min_cardiac_trigger_delay: float,
+    use_soft_delay: bool,
     fov_xy: float,
     n_readout: int,
     readout_oversampling: Literal[1, 2, 4],
@@ -50,6 +51,9 @@ def t1_t2_spiral_cmrf_kernel(
     min_cardiac_trigger_delay
         Minimum delay after cardiac trigger (in seconds).
         The total trigger delay is implemented as a soft delay and can be chosen by the user in the UI.
+    use_soft_delay
+        Use soft-delay functionality available from pulseq version 1.5.0 to allow UI adaption of trigger delay.
+        If set to false only the min_cardiac_trigger_delay is used.
     fov_xy
         Field of view in x and y direction (in meters).
     n_readout
@@ -196,12 +200,13 @@ def t1_t2_spiral_cmrf_kernel(
         prot.write_xml_header(hdr.toXML('utf-8'))
 
     # create trigger soft delay (total duration: user_input/1.0 - min_cardiac_trigger_delay)
-    trig_soft_delay = pp.make_soft_delay(
-        hint='trig_delay',
-        offset=-min_cardiac_trigger_delay,
-        factor=1.0,
-        default_duration=0.5 - min_cardiac_trigger_delay,
-    )
+    if use_soft_delay:
+        trig_soft_delay = pp.make_soft_delay(
+            hint='trig_delay',
+            offset=-min_cardiac_trigger_delay,
+            factor=1.0,
+            default_duration=0.5 - min_cardiac_trigger_delay,
+        )
 
     # obtain noise samples
     seq.add_block(pp.make_label(label='LIN', type='SET', value=0), pp.make_label(label='SLC', type='SET', value=0))
@@ -238,7 +243,8 @@ def t1_t2_spiral_cmrf_kernel(
             seq.add_block(pp.make_trigger(channel='physio1', duration=constant_trig_delay))
 
             # add variable part of trigger delay (soft delay)
-            seq.add_block(trig_soft_delay)
+            if use_soft_delay:
+                seq.add_block(trig_soft_delay)
 
             # add all events of T1prep block
             for idx in t1prep_block.block_events:
@@ -248,7 +254,8 @@ def t1_t2_spiral_cmrf_kernel(
         elif block % 5 == 1:
             # add trigger and trigger delay(s)
             seq.add_block(pp.make_trigger(channel='physio1', duration=min_cardiac_trigger_delay))
-            seq.add_block(trig_soft_delay)
+            if use_soft_delay:
+                seq.add_block(trig_soft_delay)
 
         # add T2prep for every other block
         else:
@@ -263,7 +270,8 @@ def t1_t2_spiral_cmrf_kernel(
             seq.add_block(pp.make_trigger(channel='physio1', duration=constant_trig_delay))
 
             # add variable part of trigger delay (soft delay)
-            seq.add_block(trig_soft_delay)
+            if use_soft_delay:
+                seq.add_block(trig_soft_delay)
 
             # add all events of T2prep block
             for idx in t2prep_block.block_events:
@@ -425,6 +433,7 @@ def main(
         t2_prep_echo_times=t2_prep_echo_times,
         tr=tr,
         min_cardiac_trigger_delay=np.max(t2_prep_echo_times) + 0.05,  # max T2prep echo time and buffer for spoiler
+        use_soft_delay=True,
         fov_xy=fov_xy,
         n_readout=n_readout,
         readout_oversampling=readout_oversampling,
