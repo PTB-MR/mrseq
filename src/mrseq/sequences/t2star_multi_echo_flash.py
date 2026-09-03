@@ -25,6 +25,7 @@ def t2star_multi_echo_flash_kernel(
     tr: float | None,
     n_echoes: int,
     min_cardiac_trigger_delay: float,
+    use_soft_delay: bool,
     fov_xy: float,
     n_readout: int,
     readout_oversampling: float,
@@ -61,6 +62,9 @@ def t2star_multi_echo_flash_kernel(
     min_cardiac_trigger_delay
         Minimum delay after cardiac trigger (in seconds).
         The total trigger delay is implemented as a soft delay and can be chosen by the user in the UI.
+    use_soft_delay
+        Use soft-delay functionality available from pulseq version 1.5.0 to allow UI adaption of trigger delay.
+        If set to false only the min_cardiac_trigger_delay is used.
     fov_xy
         Field of view in x and y direction (in meters).
     n_readout
@@ -220,12 +224,13 @@ def t2star_multi_echo_flash_kernel(
         prot.write_xml_header(hdr.toXML('utf-8'))
 
     # create trigger soft delay (total duration: user_input/1.0 - min_cardiac_trigger_delay)
-    trig_soft_delay = pp.make_soft_delay(
-        hint='trig_delay',
-        offset=-min_cardiac_trigger_delay,
-        factor=1.0,
-        default_duration=0.4 - min_cardiac_trigger_delay,
-    )
+    if use_soft_delay:
+        trig_soft_delay = pp.make_soft_delay(
+            hint='trig_delay',
+            offset=-min_cardiac_trigger_delay,
+            factor=1.0,
+            default_duration=0.4 - min_cardiac_trigger_delay,
+        )
     constant_trig_delay = round_to_raster(
         min_cardiac_trigger_delay - current_te / 2, raster_time=system.block_duration_raster
     )
@@ -252,7 +257,8 @@ def t2star_multi_echo_flash_kernel(
         seq.add_block(pp.make_trigger(channel='physio1', duration=constant_trig_delay))
 
         # add variable part of trigger delay (soft delay)
-        seq.add_block(trig_soft_delay)
+        if use_soft_delay:
+            seq.add_block(trig_soft_delay)
 
         for shot_idx in range(n_pe_points_per_cardiac_cycle):
             pe_index = pe_steps[shot_idx + n_pe_points_per_cardiac_cycle * cardiac_cycle_idx]
@@ -436,6 +442,7 @@ def main(
         tr=tr,
         n_echoes=n_echoes,
         min_cardiac_trigger_delay=0.1,  # has to be smaller than half the echo time
+        use_soft_delay=True,
         fov_xy=fov_xy,
         n_readout=n_readout,
         partial_echo_factor=partial_echo_factor,
