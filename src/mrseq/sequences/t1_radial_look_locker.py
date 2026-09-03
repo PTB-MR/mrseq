@@ -62,7 +62,7 @@ def t1_radial_look_locker_kernel(
     spoke_angle
         Angle between successive radial spokes (in radian).
     n_repetitions
-        Number of times the entire sequence is repeteated after a 12s wait time.
+        Number of times the entire sequence is repeated. A hard coded 12s wait time is added between repetitions.
     readout_oversampling
         Readout oversampling factor, commonly 2. This reduces aliasing artifacts.
     slice_thickness
@@ -235,8 +235,8 @@ def t1_radial_look_locker_kernel(
             rf_inc = divmod(rf_inc + rf_spoiling_phase_increment, 360.0)[1]
             rf_phase = divmod(rf_phase + rf_inc, 360.0)[1]
 
-            # calculate rotation angle for the current spoke, we start with angle > 0 to ensure we always have a
-            # gy/gy gradient which is import for GE
+            # calculate rotation angle for the current spoke.
+            # We start with angle > 0 to ensure there is always a gx and gy gradient, which is important for GE.
             rotation_angle_rad = spoke_angle * (spoke_ + 1 + rep_ * n_spokes)
 
             if te_delay > 0:
@@ -345,7 +345,7 @@ def main(
     n_spokes
         Number of radial lines.
     n_repetitions
-        Number of times the entire sequence is repeteated after a 12s wait time.
+        Number of times the entire sequence is repeated. A hard coded 12s wait time is added between repetitions.
     slice_thickness
         Slice thickness of the 2D slice (in meters).
     receiver_bandwidth_per_pixel
