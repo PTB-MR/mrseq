@@ -21,7 +21,7 @@ repos:
     # also clean any kernel information left after execution
     - id: nbstripout
       name: clean .ipynb output
-      args: [--extra-keys, "metadata.language_info"]
+      args: [--extra-keys, "metadata.language_info metadata.kernelspec"]
       files: examples/.*\.ipynb$
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
