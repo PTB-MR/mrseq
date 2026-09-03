@@ -247,9 +247,10 @@ def t1_radial_look_locker_kernel(
                 seq.add_block(*pp.rotate(gx_pre, gzr, angle=rotation_angle_rad, axis='z', system=system))
 
             # rotate and add the readout gradient and ADC
-            labels = []
-            labels.append(pp.make_label(label='LIN', type='SET', value=spoke_))
-            labels.append(pp.make_label(label='REP', type='SET', value=rep_))
+            labels = [
+                pp.make_label(label='LIN', type='SET', value=spoke_),
+                pp.make_label(label='REP', type='SET', value=rep_),
+            ]
             seq.add_block(*pp.rotate(gx, adc, angle=rotation_angle_rad, axis='z', system=system), *labels)
 
             seq.add_block(*pp.rotate(gx_post, gz_spoil, angle=rotation_angle_rad, axis='z', system=system))
