@@ -244,6 +244,25 @@ def adc_epi2d_se_kernel(
         prot = ismrmrd.Dataset(mrd_header_file, 'w')
         prot.write_xml_header(hdr.toXML('utf-8'))
 
+    # obtain noise samples if selected
+    seq.add_block(pp.make_label(label='LIN', type='SET', value=0), pp.make_label(label='SLC', type='SET', value=0))
+    seq.add_block(
+        epi2d.adc,
+        pp.make_delay(round_to_raster(pp.calc_duration(epi2d.adc), system.block_duration_raster, 'ceil')),
+        pp.make_label(label='NOISE', type='SET', value=True),
+    )
+    seq.add_block(pp.make_label(label='NOISE', type='SET', value=False))
+    seq.add_block(pp.make_delay(system.rf_dead_time))
+
+    # Write noise trajectory to MRD (zero trajectory — no gradients active)
+    if mrd_header_file:
+        assert prot is not None
+        n_samples = epi2d.adc.num_samples
+        acq = ismrmrd.Acquisition()
+        acq.resize(trajectory_dimensions=2, number_of_samples=n_samples)
+        acq.traj[:] = np.zeros((n_samples, 2), dtype=np.float32)
+        prot.append_acquisition(acq)
+
     # Precompute analytical navigator trajectory (single kx line, no ky blip)
     if n_navigator_acq > 0:
         from mrseq.utils.EpiReadout import _trapezoid_area_at_times
@@ -288,7 +307,6 @@ def adc_epi2d_se_kernel(
                     slice_label,
                     dw_label,
                     rep_label,
-                    pp.make_label(type='SET', label='TRID', value=100 + rep * len(b_values) + b_idx),
                 )
 
                 # add navigator scans for ghost correction
@@ -347,7 +365,7 @@ def adc_epi2d_se_kernel(
                 # add diffusion gradient and refocusing pulse
                 seq, b_value_calc = diff_prep.add_diffusion_prep(seq, b_value=b_value)
 
-                seq.add_block(pp.make_delay(te_delay2), pp.make_label(type='SET', label='TRID', value=1))
+                seq.add_block(pp.make_delay(te_delay2))
 
                 # add EPI readout block without pre-phaser gradients
                 # (trajectory is written per-readout inside add_to_seq when mrd_dataset is provided)
@@ -359,29 +377,6 @@ def adc_epi2d_se_kernel(
 
             if rep == 0:
                 b_values_calculated.append(b_value_calc)
-
-    # obtain noise samples if selected
-    seq.add_block(
-        pp.make_delay(0.1),
-        pp.make_label(label='LIN', type='SET', value=0),
-        pp.make_label(label='SLC', type='SET', value=0),
-        pp.make_label(type='SET', label='TRID', value=9999),
-        pp.make_label(label='NOISE', type='SET', value=True),
-    )
-    seq.add_block(
-        epi2d.adc, pp.make_delay(round_to_raster(pp.calc_duration(epi2d.adc), system.block_duration_raster, 'ceil'))
-    )
-    seq.add_block(pp.make_label(label='NOISE', type='SET', value=False))
-    seq.add_block(pp.make_delay(system.rf_dead_time))
-
-    # Write noise trajectory to MRD (zero trajectory — no gradients active)
-    if mrd_header_file:
-        assert prot is not None
-        n_samples = epi2d.adc.num_samples
-        acq = ismrmrd.Acquisition()
-        acq.resize(trajectory_dimensions=2, number_of_samples=n_samples)
-        acq.traj[:] = np.zeros((n_samples, 2), dtype=np.float32)
-        prot.append_acquisition(acq)
 
     # close ISMRMRD file
     if mrd_header_file:

@@ -3,7 +3,7 @@
 import pytest
 from mrseq.sequences.adc_epi2d_se import main as create_seq
 
-EXPECTED_DUR = 1.38768  # defined 2026-03-18
+EXPECTED_DUR = 1.28768  # defined 2026-09-03
 
 
 def test_default_seq_duration(system_defaults):
