@@ -20,6 +20,7 @@ def t2_t2prep_flash_kernel(
     t2_prep_echo_times: np.ndarray,
     n_recovery_cardiac_cycles: int,
     min_cardiac_trigger_delay: float,
+    use_soft_delay: bool,
     fov_xy: float,
     n_readout: int,
     readout_oversampling: float,
@@ -54,6 +55,9 @@ def t2_t2prep_flash_kernel(
     min_cardiac_trigger_delay
         Minimum delay after cardiac trigger (in seconds).
         The total trigger delay is implemented as a soft delay and can be chosen by the user in the UI.
+    use_soft_delay
+        Use soft-delay functionality available from pulseq version 1.5.0 to allow UI adaption of trigger delay.
+        If set to false only the min_cardiac_trigger_delay is used.
     fov_xy
         Field of view in x and y direction (in meters).
     n_readout
@@ -200,12 +204,13 @@ def t2_t2prep_flash_kernel(
     rf_inc = 0.0
 
     # create trigger soft delay (total duration: user_input/1.0 - min_cardiac_trigger_delay)
-    trig_soft_delay = pp.make_soft_delay(
-        hint='trig_delay',
-        offset=-min_cardiac_trigger_delay,
-        factor=1.0,
-        default_duration=0.8 - min_cardiac_trigger_delay,
-    )
+    if use_soft_delay:
+        trig_soft_delay = pp.make_soft_delay(
+            hint='trig_delay',
+            offset=-min_cardiac_trigger_delay,
+            factor=1.0,
+            default_duration=0.8 - min_cardiac_trigger_delay,
+        )
 
     # obtain noise samples
     seq.add_block(pp.make_label(label='LIN', type='SET', value=0), pp.make_label(label='SLC', type='SET', value=0))
@@ -229,7 +234,8 @@ def t2_t2prep_flash_kernel(
                 seq.add_block(pp.make_trigger(channel='physio1', duration=constant_trig_delay))
 
                 # add variable part of trigger delay (soft delay)
-                seq.add_block(trig_soft_delay)
+                if use_soft_delay:
+                    seq.add_block(trig_soft_delay)
 
                 # add all events of T2prep block
                 for idx in t2prep_block.block_events:
@@ -246,7 +252,8 @@ def t2_t2prep_flash_kernel(
                 seq.add_block(pp.make_trigger(channel='physio1', duration=constant_trig_delay))
 
                 # add variable part of trigger delay (soft delay)
-                seq.add_block(trig_soft_delay)
+                if use_soft_delay:
+                    seq.add_block(trig_soft_delay)
 
             for shot_idx in range(n_pe_points_per_cardiac_cycle):
                 pe_index_ = pe_steps[shot_idx + n_pe_points_per_cardiac_cycle * cardiac_cycle_idx]
@@ -297,7 +304,8 @@ def t2_t2prep_flash_kernel(
                     seq.add_block(pp.make_trigger(channel='physio1', duration=min_cardiac_trigger_delay))
 
                     # add variable part of trigger delay (soft delay)
-                    seq.add_block(trig_soft_delay)
+                    if use_soft_delay:
+                        seq.add_block(trig_soft_delay)
 
     # write all required parameters in the seq-file header/definitions
     seq.set_definition('FOV', [fov_xy, fov_xy, slice_thickness])
@@ -414,6 +422,7 @@ def main(
         t2_prep_echo_times=t2_prep_echo_times,
         n_recovery_cardiac_cycles=n_recovery_cardiac_cycles,
         min_cardiac_trigger_delay=np.max(t2_prep_echo_times) + 0.05,  # max T2prep echo time + buffer for spoiler
+        use_soft_delay=True,
         fov_xy=fov_xy,
         n_readout=n_readout,
         readout_oversampling=readout_oversampling,

@@ -19,6 +19,7 @@ def t1_molli_bssfp_kernel(
     tr: float | None,
     inversion_times: np.ndarray,
     min_cardiac_trigger_delay: float,
+    use_soft_delay: bool,
     fov_xy: float,
     n_readout: int,
     readout_oversampling: float,
@@ -48,6 +49,9 @@ def t1_molli_bssfp_kernel(
     min_cardiac_trigger_delay
         Minimum delay after cardiac trigger (in seconds).
         The total trigger delay is implemented as a soft delay and can be chosen by the user in the UI.
+    use_soft_delay
+        Use soft-delay functionality available from pulseq version 1.5.0 to allow UI adaption of trigger delay.
+        If set to false only the min_cardiac_trigger_delay is used.
     fov_xy
         Field of view in x and y direction (in meters).
     n_readout
@@ -174,12 +178,13 @@ def t1_molli_bssfp_kernel(
     print(f'Acquisition window per cardiac cycle = {current_tr * len(pe_steps) * 1000:.3f} ms')
 
     # create trigger soft delay (total duration: user_input/1.0 - min_cardiac_trigger_delay)
-    trig_soft_delay = pp.make_soft_delay(
-        hint='trig_delay',
-        offset=-min_cardiac_trigger_delay,
-        factor=1.0,
-        default_duration=0.8 - min_cardiac_trigger_delay,
-    )
+    if use_soft_delay:
+        trig_soft_delay = pp.make_soft_delay(
+            hint='trig_delay',
+            offset=-min_cardiac_trigger_delay,
+            factor=1.0,
+            default_duration=0.8 - min_cardiac_trigger_delay,
+        )
 
     # obtain noise samples
     seq.add_block(pp.make_label(label='LIN', type='SET', value=0), pp.make_label(label='SLC', type='SET', value=0))
@@ -219,7 +224,8 @@ def t1_molli_bssfp_kernel(
                 seq.add_block(pp.make_trigger(channel='physio1', duration=constant_trig_delay))
 
                 # add variable part of trigger delay (soft delay)
-                seq.add_block(trig_soft_delay)
+                if use_soft_delay:
+                    seq.add_block(trig_soft_delay)
 
                 # add inversion pulse
                 for idx in t1_inv_prep.block_events:
@@ -244,7 +250,8 @@ def t1_molli_bssfp_kernel(
                 seq.add_block(pp.make_trigger(channel='physio1', duration=constant_trig_delay))
 
                 # add variable part of trigger delay (soft delay)
-                seq.add_block(trig_soft_delay)
+                if use_soft_delay:
+                    seq.add_block(trig_soft_delay)
 
             rf_signal = rf.signal.copy()
             for pe_index in range(-n_bssfp_startup_pulses, len(pe_steps)):
@@ -307,7 +314,8 @@ def t1_molli_bssfp_kernel(
                 seq.add_block(pp.make_trigger(channel='physio1', duration=min_cardiac_trigger_delay))
 
                 # add variable part of trigger delay (soft delay)
-                seq.add_block(trig_soft_delay)
+                if use_soft_delay:
+                    seq.add_block(trig_soft_delay)
 
     # write all required parameters in the seq-file header/definitions
     seq.set_definition('FOV', [fov_xy, fov_xy, slice_thickness])
@@ -417,6 +425,7 @@ def main(
         inversion_times=inversion_times,
         min_cardiac_trigger_delay=np.max(inversion_times)
         + 0.02,  # max inversion time + approx inversion pulse duration
+        use_soft_delay=True,
         fov_xy=fov_xy,
         n_readout=n_readout,
         readout_oversampling=readout_oversampling,
