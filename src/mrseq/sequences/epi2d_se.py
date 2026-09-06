@@ -242,7 +242,6 @@ def epi2d_se_kernel(
             dwell_time=epi2d.adc.dwell,
             slice_limits=Limits(min=0, max=n_slices, center=n_slices // 2),
             k1_limits=Limits(min=0, max=epi2d.n_phase_enc_total, center=epi2d.n_phase_enc_pre_center + 1),
-            k2_limits=Limits(min=0, max=1, center=0),
         )
 
         # write header to file
