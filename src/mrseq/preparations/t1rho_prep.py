@@ -3,6 +3,7 @@
 import numpy as np
 import pypulseq as pp
 
+from mrseq.utils import round_to_raster
 from mrseq.utils import sys_defaults
 from mrseq.utils.constants import GYROMAGNETIC_RATIO_PROTON
 
@@ -98,8 +99,8 @@ def add_t1rho_prep(
         gz_spoiler = pp.make_trapezoid(
             channel='z',
             amplitude=0.4 * system.max_grad,
-            flat_time=spoiler_flat_time,
-            rise_time=spoiler_ramp_time,
+            flat_time=round_to_raster(spoiler_flat_time, system.grad_raster_time),
+            rise_time=round_to_raster(spoiler_ramp_time, system.grad_raster_time),
         )
         seq.add_block(gz_spoiler)
 

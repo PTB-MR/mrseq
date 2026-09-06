@@ -2,10 +2,12 @@
 
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version
+from types import SimpleNamespace
 from typing import Literal
 
 import numpy as np
 import pypulseq as pp
+from pypulseq.opts import Opts
 
 
 def round_to_raster(value: float, raster_time: float, method: Literal['floor', 'round', 'ceil'] = 'round') -> float:
@@ -160,3 +162,61 @@ def write_sequence(
     if pypulseq_version >= (1, 5, 0):
         return seq.write(filename, create_signature=create_signature, v141_compat=v141_compatibility, **kwargs)
     return seq.write(filename, create_signature=create_signature, **kwargs)
+
+
+def make_trapezoid_readout(
+    channel: str,
+    amplitude: float | None = None,
+    area: float | None = None,
+    delay: float = 0,
+    duration: float | None = None,
+    fall_time: float | None = None,
+    flat_area: float | None = None,
+    flat_time: float | None = None,
+    max_grad: float | None = None,
+    max_slew: float | None = None,
+    rise_time: float | None = None,
+    system: Opts | None = None,
+) -> SimpleNamespace:
+    """
+    Create a trapezoidal readout gradient event.
+
+    This is a wrapper around `pypulseq.make_trapezoid()` to ensure the gradient rise time is at least the dead time of
+    the adc.
+
+    Returns
+    -------
+    grad
+        Trapezoidal gradient event created based on the supplied parameters.
+    """
+    grad = pp.make_trapezoid(
+        channel=channel,
+        amplitude=amplitude,
+        area=area,
+        delay=delay,
+        duration=duration,
+        fall_time=fall_time,
+        flat_area=flat_area,
+        flat_time=flat_time,
+        max_grad=max_grad,
+        max_slew=max_slew,
+        rise_time=rise_time,
+        system=system,
+    )
+    # make sure the rise time is at least the dead time of the ADC
+    if system is not None and grad.rise_time < system.adc_dead_time:
+        grad = pp.make_trapezoid(
+            channel=channel,
+            amplitude=amplitude,
+            area=area,
+            delay=delay,
+            duration=duration,
+            fall_time=fall_time,
+            flat_area=flat_area,
+            flat_time=flat_time,
+            max_grad=max_grad,
+            max_slew=max_slew,
+            system=system,
+            rise_time=system.adc_dead_time,
+        )
+    return grad

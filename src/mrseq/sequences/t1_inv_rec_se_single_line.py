@@ -6,6 +6,7 @@ import numpy as np
 import pypulseq as pp
 
 from mrseq.preparations import add_t1_inv_prep
+from mrseq.utils import make_trapezoid_readout
 from mrseq.utils import round_to_raster
 from mrseq.utils import sys_defaults
 from mrseq.utils import write_sequence
@@ -131,7 +132,7 @@ def t1_inv_rec_se_single_line_kernel(
 
     # create readout gradient and ADC
     delta_k = 1 / fov_xy
-    gx = pp.make_trapezoid(channel='x', flat_area=n_readout * delta_k, flat_time=gx_flat_time, system=system)
+    gx = make_trapezoid_readout(channel='x', flat_area=n_readout * delta_k, flat_time=gx_flat_time, system=system)
     adc = pp.make_adc(num_samples=n_readout, duration=gx.flat_time, delay=gx.rise_time, system=system)
 
     # create frequency encoding pre- and re-winder gradient
@@ -333,7 +334,7 @@ def main(
 
     # define ADC and gradient timing
     adc_dwell = system.grad_raster_time
-    gx_pre_duration = 1.0e-3  # duration of readout pre-winder gradient [s]
+    gx_pre_duration = 1.12e-3  # duration of readout pre-winder gradient [s]
     gx_flat_time = n_readout * adc_dwell  # flat time of readout gradient [s]
 
     # define spoiler gradient settings
