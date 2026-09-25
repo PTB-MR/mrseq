@@ -133,7 +133,7 @@ def spiral_acquisition(
     print(
         f'Target undersampling: {undersampling_factor} - ',
         f'achieved undersampling: {n_readout**2 / (len(traj) * n_spirals_undersampling):.2f}',
-        f'FOV: {fov * fov_scaling_center:.3f} (k-sapce center) - {fov * fov_scaling_edge:.3f} (k-space edge)',
+        f'FOV: {fov * fov_scaling_center:.3f} (k-space center) - {fov * fov_scaling_edge:.3f} (k-space edge)',
     )
 
     delta_angle = 2 * np.pi / n_spirals
