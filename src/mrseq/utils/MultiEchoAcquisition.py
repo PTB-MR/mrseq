@@ -8,6 +8,7 @@ import pypulseq as pp
 from mrseq.utils import find_gx_flat_time_on_adc_raster
 from mrseq.utils import round_to_raster
 from mrseq.utils import sys_defaults
+from mrseq.utils.sequence_helper import make_trapezoid_readout
 
 
 class MultiEchoAcquisition:
@@ -93,7 +94,7 @@ class MultiEchoAcquisition:
             self._system.adc_raster_time,
         )
 
-        self._gx = pp.make_trapezoid(
+        self._gx = make_trapezoid_readout(
             channel='x', flat_area=gx_flat_area, flat_time=self._gx_flat_time, system=self._system
         )
 
@@ -107,7 +108,7 @@ class MultiEchoAcquisition:
         self._gx_pre = pp.make_trapezoid(
             channel='x',
             area=-(self._gx.amplitude * self._gx.rise_time / 2 + delta_k * (self._n_readout_pre_echo + 0.5)),
-            duration=gx_pre_duration * partial_echo_factor,
+            duration=round_to_raster(gx_pre_duration * partial_echo_factor, self._system.grad_raster_time),
             system=self._system,
         )
         self._gx_post = pp.make_trapezoid(
