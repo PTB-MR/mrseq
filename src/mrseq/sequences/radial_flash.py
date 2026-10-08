@@ -234,7 +234,7 @@ def radial_flash_kernel(
             rf_phase = divmod(rf_phase + rf_inc, 360.0)[1]
 
             # calculate rotation angle for the current spoke
-            rotation_angle_rad = spoke_angle * spoke_
+            rotation_angle_rad = spoke_angle * spoke_ if spoke_ >= 0 else 0.0
 
             if te_delay > 0:
                 seq.add_block(gzr)
@@ -250,7 +250,7 @@ def radial_flash_kernel(
                 labels.append(pp.make_label(label='SLC', type='SET', value=slice_))
                 seq.add_block(*pp.rotate(gx, adc, angle=rotation_angle_rad, axis='z'), *labels)
             else:
-                seq.add_block(pp.make_delay(pp.calc_duration(gx, adc)))
+                seq.add_block(*pp.rotate(gx, angle=rotation_angle_rad, axis='z'))
 
             seq.add_block(*pp.rotate(gx_post, gz_spoil, angle=rotation_angle_rad, axis='z'))
 
@@ -370,7 +370,7 @@ def main(
     # define spoiling
     gz_spoil_duration = 0.8e-3  # duration of spoiler gradient [s]
     gz_spoil_area = 4 / slice_thickness  # area / zeroth gradient moment of spoiler gradient
-    rf_spoiling_phase_increment = 117  # RF spoiling phase increment [°]. Set to 0 for no RF spoiling.
+    rf_spoiling_phase_increment = 84  # RF spoiling phase increment [°]. Set to 0 for no RF spoiling.
 
     # define sequence filename
     filename = f'{Path(__file__).stem}_{int(fov_xy * 1000)}fov_{n_readout}nx_{n_spokes}na_{n_slices}ns'
