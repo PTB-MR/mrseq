@@ -243,7 +243,6 @@ def grpe_flash_dixon_kernel(
             encoding_matrix=MatrixSize(n_x=int(n_readout * readout_oversampling), n_y=n_rpe_points, n_z=n_rpe_points),
             recon_matrix=MatrixSize(n_x=n_readout, n_y=n_rpe_points, n_z=n_rpe_points),
             dwell_time=multi_echo_gradient._adc.dwell,
-            slice_limits=Limits(min=0, max=0, center=0),
             k1_limits=Limits(min=0, max=n_rpe_points, center=0),
             k2_limits=Limits(min=0, max=n_rpe_spokes, center=0),
         )
