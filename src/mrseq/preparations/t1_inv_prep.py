@@ -12,6 +12,7 @@ def add_t1_inv_prep(
     add_spoiler: bool = True,
     spoiler_ramp_time: float = 6e-4,
     spoiler_flat_time: float = 8.4e-3,
+    rf_mu: float = 4.9,
 ) -> tuple[pp.Sequence, float, float]:
     """Add an adiabatic T1 preparation block to a sequence.
 
@@ -31,6 +32,8 @@ def add_t1_inv_prep(
         Duration of gradient spoiler ramps (in seconds).
     spoiler_flat_time
         Duration of gradient spoiler plateau (in seconds).
+    rf_mu
+        Constant determining amplitude of frequency sweep of adiabatic inversion pulse.
 
     Returns
     -------
@@ -57,7 +60,7 @@ def add_t1_inv_prep(
         pulse_type='hypsec',
         adiabaticity=6,
         beta=800,
-        mu=4.9,
+        mu=rf_mu,
         delay=system.rf_dead_time,
         duration=rf_duration,
         system=system,
