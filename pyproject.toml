@@ -67,6 +67,7 @@ testpaths = ["tests"]
 filterwarnings = [
     "error",
     'ignore:WARNING! The sequence in memory uses "soft delay" extension, which is incompatible with the file format v1.4.1',
+    "ignore:Due to '_pack_'.*:DeprecationWarning",
 ]
 
 [tool.ruff]
