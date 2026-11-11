@@ -43,6 +43,7 @@ def t1_molli_bssfp_kernel(
     rf_inv_duration: float,
     rf_inv_spoil_risetime: float,
     rf_inv_spoil_flattime: float,
+    rf_inv_mu: float,
     mrd_header_file: str | Path | None,
 ) -> tuple[pp.Sequence, float, float]:
     """Generate a 5(3)3 MOLLI sequence with bSSFP readout for cardiac T1 mapping.
@@ -97,6 +98,8 @@ def t1_molli_bssfp_kernel(
         Rise time of spoiler after inversion pulse (in seconds)
     rf_inv_spoil_flattime
         Flat time of spoiler after inversion pulse (in seconds)
+    rf_inv_mu
+        Constant determining amplitude of frequency sweep of adiabatic inversion pulse
     mrd_header_file
         Filename of the ISMRMRD header file to be created. If None, no header file is created.
 
@@ -252,6 +255,7 @@ def t1_molli_bssfp_kernel(
         rf_duration=rf_inv_duration,
         spoiler_flat_time=rf_inv_spoil_flattime,
         spoiler_ramp_time=rf_inv_spoil_risetime,
+        rf_mu=rf_inv_mu,
     )
 
     # In the first part 5 images are acquired in 5 cardiac cycles, followed by 3 cardiac cycles without data
@@ -468,6 +472,7 @@ def main(
     rf_inv_duration = 12e-3  # duration of adiabatic inversion pulse [s]
     rf_inv_spoil_risetime = 0.6e-3  # rise time of spoiler after inversion pulse [s]
     rf_inv_spoil_flattime = 8.4e-3  # flat time of spoiler after inversion pulse [s]
+    rf_inv_mu = 4.9  # constant determining amplitude of frequency sweep of adiabatic inversion pulse
 
     # define settings of rf excitation pulse
     rf_duration = 0.5e-3  # duration of the rf excitation pulse [s]
@@ -522,6 +527,7 @@ def main(
         rf_inv_duration=rf_inv_duration,
         rf_inv_spoil_risetime=rf_inv_spoil_risetime,
         rf_inv_spoil_flattime=rf_inv_spoil_flattime,
+        rf_inv_mu=rf_inv_mu,
         mrd_header_file=output_path / Path(filename + '_header.h5'),
     )
 

@@ -23,6 +23,7 @@ def t1_inv_rec_se_single_line_kernel(
     rf_inv_duration: float,
     rf_inv_spoil_risetime: float,
     rf_inv_spoil_flattime: float,
+    rf_inv_mu: float,
     gx_pre_duration: float,
     gx_flat_time: float,
     rf90_duration: float,
@@ -62,6 +63,8 @@ def t1_inv_rec_se_single_line_kernel(
         Rise time of spoiler after inversion pulse (in seconds)
     rf_inv_spoil_flattime
         Flat time of spoiler after inversion pulse (in seconds)
+    rf_inv_mu
+        Constant determining amplitude of frequency sweep of adiabatic inversion pulse
     gx_pre_duration
         Duration of readout pre-winder gradient (in seconds)
     gx_flat_time
@@ -209,6 +212,7 @@ def t1_inv_rec_se_single_line_kernel(
                 rf_duration=rf_inv_duration,
                 spoiler_ramp_time=rf_inv_spoil_risetime,
                 spoiler_flat_time=rf_inv_spoil_flattime,
+                rf_mu=rf_inv_mu,
             )
 
             # calculate and add inversion time (TI) delay.
@@ -330,6 +334,7 @@ def main(
     rf_inv_duration = 10.24e-3  # duration of adiabatic inversion pulse [s]
     rf_inv_spoil_risetime = 0.6e-3  # rise time of spoiler after inversion pulse [s]
     rf_inv_spoil_flattime = 8.4e-3  # flat time of spoiler after inversion pulse [s]
+    rf_inv_mu = 4.9  # constant determining amplitude of frequency sweep of adiabatic inversion pulse
 
     # define ADC and gradient timing
     adc_dwell = system.grad_raster_time
@@ -364,6 +369,7 @@ def main(
         rf_inv_duration=rf_inv_duration,
         rf_inv_spoil_risetime=rf_inv_spoil_risetime,
         rf_inv_spoil_flattime=rf_inv_spoil_flattime,
+        rf_inv_mu=rf_inv_mu,
         gx_pre_duration=gx_pre_duration,
         gx_flat_time=gx_flat_time,
         rf90_duration=rf90_duration,
