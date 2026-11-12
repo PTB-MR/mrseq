@@ -24,6 +24,7 @@ def t1_t2_spiral_cmrf_kernel(
     t2_prep_echo_times: np.ndarray,
     tr: float | None,
     min_cardiac_trigger_delay: float,
+    use_soft_delay: bool,
     fov_xy: float,
     n_readout: int,
     readout_oversampling: Literal[1, 2, 4],
@@ -32,6 +33,7 @@ def t1_t2_spiral_cmrf_kernel(
     rf_inv_duration: float,
     rf_inv_spoil_risetime: float,
     rf_inv_spoil_flattime: float,
+    rf_inv_mu: float,
     rf_duration: float,
     rf_bwt: float,
     rf_apodization: float,
@@ -50,6 +52,9 @@ def t1_t2_spiral_cmrf_kernel(
     min_cardiac_trigger_delay
         Minimum delay after cardiac trigger (in seconds).
         The total trigger delay is implemented as a soft delay and can be chosen by the user in the UI.
+    use_soft_delay
+        Use soft-delay functionality available from pulseq version 1.5.0 to allow UI adaption of trigger delay.
+        If set to false only the min_cardiac_trigger_delay is used.
     fov_xy
         Field of view in x and y direction (in meters).
     n_readout
@@ -66,6 +71,8 @@ def t1_t2_spiral_cmrf_kernel(
         Rise time of spoiler after inversion pulse (in seconds)
     rf_inv_spoil_flattime
         Flat time of spoiler after inversion pulse (in seconds)
+    rf_inv_mu
+        Constant determining amplitude of frequency sweep of adiabatic inversion pulse
     rf_duration
         Duration of the rf excitation pulse (in seconds)
     rf_bwt
@@ -186,9 +193,7 @@ def t1_t2_spiral_cmrf_kernel(
             encoding_matrix=MatrixSize(n_x=int(n_readout), n_y=int(n_readout), n_z=1),
             recon_matrix=MatrixSize(n_x=n_readout, n_y=n_readout, n_z=1),
             dwell_time=adc.dwell,
-            slice_limits=Limits(min=0, max=1, center=0),
             k1_limits=Limits(min=0, max=len(gx), center=0),
-            k2_limits=Limits(min=0, max=1, center=0),
         )
 
         # write header to file
@@ -196,12 +201,13 @@ def t1_t2_spiral_cmrf_kernel(
         prot.write_xml_header(hdr.toXML('utf-8'))
 
     # create trigger soft delay (total duration: user_input/1.0 - min_cardiac_trigger_delay)
-    trig_soft_delay = pp.make_soft_delay(
-        hint='trig_delay',
-        offset=-min_cardiac_trigger_delay,
-        factor=1.0,
-        default_duration=0.5 - min_cardiac_trigger_delay,
-    )
+    if use_soft_delay:
+        trig_soft_delay = pp.make_soft_delay(
+            hint='trig_delay',
+            offset=-min_cardiac_trigger_delay,
+            factor=1.0,
+            default_duration=0.5 - min_cardiac_trigger_delay,
+        )
 
     # obtain noise samples
     seq.add_block(pp.make_label(label='LIN', type='SET', value=0), pp.make_label(label='SLC', type='SET', value=0))
@@ -227,10 +233,11 @@ def t1_t2_spiral_cmrf_kernel(
         if block % 5 == 0:
             # get prep block duration and calculate corresponding trigger delay
             t1prep_block, prep_dur, time_since_inversion = add_t1_inv_prep(
+                system=system,
                 rf_duration=rf_inv_duration,
                 spoiler_ramp_time=rf_inv_spoil_risetime,
                 spoiler_flat_time=rf_inv_spoil_flattime,
-                system=system,
+                rf_mu=rf_inv_mu,
             )
             constant_trig_delay = min_cardiac_trigger_delay - prep_dur
 
@@ -238,7 +245,8 @@ def t1_t2_spiral_cmrf_kernel(
             seq.add_block(pp.make_trigger(channel='physio1', duration=constant_trig_delay))
 
             # add variable part of trigger delay (soft delay)
-            seq.add_block(trig_soft_delay)
+            if use_soft_delay:
+                seq.add_block(trig_soft_delay)
 
             # add all events of T1prep block
             for idx in t1prep_block.block_events:
@@ -248,7 +256,8 @@ def t1_t2_spiral_cmrf_kernel(
         elif block % 5 == 1:
             # add trigger and trigger delay(s)
             seq.add_block(pp.make_trigger(channel='physio1', duration=min_cardiac_trigger_delay))
-            seq.add_block(trig_soft_delay)
+            if use_soft_delay:
+                seq.add_block(trig_soft_delay)
 
         # add T2prep for every other block
         else:
@@ -263,7 +272,8 @@ def t1_t2_spiral_cmrf_kernel(
             seq.add_block(pp.make_trigger(channel='physio1', duration=constant_trig_delay))
 
             # add variable part of trigger delay (soft delay)
-            seq.add_block(trig_soft_delay)
+            if use_soft_delay:
+                seq.add_block(trig_soft_delay)
 
             # add all events of T2prep block
             for idx in t2prep_block.block_events:
@@ -403,6 +413,7 @@ def main(
     rf_inv_duration = 10.24e-3  # duration of adiabatic inversion pulse [s]
     rf_inv_spoil_risetime = 0.6e-3  # rise time of spoiler after inversion pulse [s]
     rf_inv_spoil_flattime = 8.4e-3  # flat time of spoiler after inversion pulse [s]
+    rf_inv_mu = 4.9  # constant determining amplitude of frequency sweep of adiabatic inversion pulse
 
     # define settings of rf excitation pulse
     rf_duration = 0.8e-3  # duration of the rf excitation pulse [s]
@@ -425,6 +436,7 @@ def main(
         t2_prep_echo_times=t2_prep_echo_times,
         tr=tr,
         min_cardiac_trigger_delay=np.max(t2_prep_echo_times) + 0.05,  # max T2prep echo time and buffer for spoiler
+        use_soft_delay=True,
         fov_xy=fov_xy,
         n_readout=n_readout,
         readout_oversampling=readout_oversampling,
@@ -433,6 +445,7 @@ def main(
         rf_inv_duration=rf_inv_duration,
         rf_inv_spoil_risetime=rf_inv_spoil_risetime,
         rf_inv_spoil_flattime=rf_inv_spoil_flattime,
+        rf_inv_mu=rf_inv_mu,
         rf_duration=rf_duration,
         rf_bwt=rf_bwt,
         rf_apodization=rf_apodization,
