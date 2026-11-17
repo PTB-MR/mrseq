@@ -50,6 +50,7 @@ repos:
           - pytest
           - matplotlib
           - scipy-stubs
+          - mrpro
 
 ci:
   autofix_commit_msg: |
