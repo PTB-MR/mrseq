@@ -40,6 +40,7 @@ def t1_radial_look_locker_kernel(
     rf_inv_duration: float,
     rf_inv_spoil_risetime: float,
     rf_inv_spoil_flattime: float,
+    rf_inv_mu: float,
     mrd_header_file: str | Path | None,
 ) -> tuple[pp.Sequence, float, float, float]:
     """Generate a radial Look Locker sequence for T1 mapping.
@@ -88,6 +89,8 @@ def t1_radial_look_locker_kernel(
         Rise time of spoiler after inversion pulse (in seconds)
     rf_inv_spoil_flattime
         Flat time of spoiler after inversion pulse (in seconds)
+    rf_inv_mu
+        Constant determining amplitude of frequency sweep of adiabatic inversion pulse
     mrd_header_file
         Filename of the ISMRMRD header file to be created. If None, no header file is created.
 
@@ -225,6 +228,7 @@ def t1_radial_look_locker_kernel(
         rf_duration=rf_inv_duration,
         spoiler_flat_time=rf_inv_spoil_flattime,
         spoiler_ramp_time=rf_inv_spoil_risetime,
+        rf_mu=rf_inv_mu,
     )
 
     for spoke_ in range(n_spokes):
@@ -357,6 +361,7 @@ def main(
     rf_inv_duration = 12e-3  # duration of adiabatic inversion pulse [s]
     rf_inv_spoil_risetime = 0.6e-3  # rise time of spoiler after inversion pulse [s]
     rf_inv_spoil_flattime = 8.4e-3  # flat time of spoiler after inversion pulse [s]
+    rf_inv_mu = 4.9  # constant determining amplitude of frequency sweep of adiabatic inversion pulse
 
     # define settings of rf excitation pulse
     rf_duration = 1.28e-3  # duration of the rf excitation pulse [s]
@@ -410,6 +415,7 @@ def main(
         rf_inv_duration=rf_inv_duration,
         rf_inv_spoil_risetime=rf_inv_spoil_risetime,
         rf_inv_spoil_flattime=rf_inv_spoil_flattime,
+        rf_inv_mu=rf_inv_mu,
         mrd_header_file=output_path / Path(filename + '_header.h5'),
     )
 
