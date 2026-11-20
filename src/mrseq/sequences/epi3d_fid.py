@@ -198,7 +198,7 @@ def epi3d_fid_kernel(
             encoding_fov=Fov(x=fov_xy * readout_oversampling, y=fov_xy, z=fov_z),
             recon_fov=Fov(x=fov_xy, y=fov_xy, z=fov_z),
             encoding_matrix=MatrixSize(
-                n_x=n_readout * readout_oversampling, n_y=epi3d.n_phase_encoding, n_z=epi3d.n_partitions_total
+                n_x=n_readout * readout_oversampling, n_y=epi3d.n_phase_encoding, n_z=n_partitions
             ),
             recon_matrix=MatrixSize(n_x=n_readout, n_y=n_phase_encoding, n_z=n_partitions),
             dwell_time=epi3d.adc.dwell,

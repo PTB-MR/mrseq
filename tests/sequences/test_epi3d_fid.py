@@ -159,7 +159,7 @@ def test_mrd_trajectory(
     hdr = ismrmrd.xsd.CreateFromDocument(dset.read_xml_header())
     assert hdr.encoding[0].encodingLimits.kspace_encoding_step_2.maximum == epi.n_partitions_total
     assert hdr.encoding[0].encodingLimits.kspace_encoding_step_2.center == epi.n_partitions_pre_center + 1
-    assert hdr.encoding[0].encodedSpace.matrixSize.z == epi.n_partitions_total
+    assert hdr.encoding[0].encodedSpace.matrixSize.z == n_partitions
     dset.close()
 
     # Compare Pulseq trajectories against MRD trajectories including noise and navigator acquisitions
