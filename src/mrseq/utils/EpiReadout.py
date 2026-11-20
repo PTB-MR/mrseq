@@ -115,18 +115,61 @@ class EpiReadout:
     ----------
     system
         System limits.
+    fov
+        Field of view in readout and phase encoding direction in meters (square).
+    fov_z
+        Field of view in partition direction in meters (None for 2D).
+    n_readout
+        Number of readout points.
+    n_phase_encoding
+        Nominal number of phase encoding points (without partial Fourier).
+    n_partitions
+        Number of partitions (kz encoding steps). Values > 1 enable 3D encoding.
+    bandwidth
+        Total receiver bandwidth in Hz.
+    oversampling
+        ADC oversampling factor.
     ramp_sampling
         If True, ADC is active during gradient ramps (optimized timing).
     readout_type
         Readout type ('flyback' or 'symmetric').
+    partial_fourier_factor
+        Actual partial Fourier factor in phase encoding direction (may deviate from the requested value).
+    partial_fourier_factor_z
+        Actual partial Fourier factor in partition direction (may deviate from the requested value).
+    adc_freq_offset
+        Frequency offset for the ADC.
+    pe_enable
+        Enable phase encoding (set to False for calibration scans).
     spoiling_enable
         Enable spoiling gradients (useful for calibration if False).
+    n_phase_enc_pre_center
+        Number of phase encoding lines acquired before the k-space center line.
+    n_phase_enc_post_center
+        Number of phase encoding lines acquired after (and including) the k-space center line.
+    n_phase_enc_total
+        Total number of acquired phase encoding lines.
+    n_partitions_pre_center
+        Number of partitions before the k-space center partition.
+    n_partitions_post_center
+        Number of partitions after (and including) the k-space center partition.
+    n_partitions_total
+        Total number of acquired partitions.
+    kz_areas
+        kz encoding areas per partition in 1/m. Follows the ky convention, i.e. the first partition is at
+        ``-n_partitions_pre_center / fov_z`` and partition ``n_partitions_pre_center`` is the k-space center.
+    spoil_area
+        Gradient area of the z-spoiler in 1/m (0 if spoiling is disabled).
+    trajectory_dimensions
+        Number of trajectory dimensions (2 or 3).
     adc
         ADC event.
     gx_pre
         Pre-phaser gradient in readout direction.
     gy_pre
         Pre-phaser gradient in phase encoding direction.
+    gz_pre
+        Pre-phaser gradient in partition encoding direction (None for 2D).
     gx
         Readout gradient.
     gy
@@ -140,7 +183,9 @@ class EpiReadout:
     gy_blipdownup
         Combined gy_blipdown and gy_blipup gradient used for symmetric readout.
     gz_spoil
-        Spoiler gradient in z-direction.
+        Spoiler gradient in z-direction. For 3D readouts, this is the maximum-area
+        template including the kz rewinder; use ``gz_post_for_partition`` to obtain
+        the partition-specific gradient.
     gx_flyback
         Flyback gradient in x-direction.
     """
@@ -149,13 +194,16 @@ class EpiReadout:
         self,
         system: pp.Opts | None = None,
         fov: float = 128e-3,
+        fov_z: float | None = None,
         n_readout: int = 64,
         n_phase_encoding: int = 64,
+        n_partitions: int = 1,
         bandwidth: float = 50e3,
         oversampling: int = 2,
         ramp_sampling: bool = True,
         readout_type: Literal['flyback', 'symmetric'] = 'symmetric',
         partial_fourier_factor: float = 1.0,
+        partial_fourier_factor_z: float = 1.0,
         adc_freq_offset: float = 0,
         pe_enable: bool = True,
         spoiling_enable: bool = True,
@@ -168,10 +216,14 @@ class EpiReadout:
             System limits.
         fov
             Field of view in meters (square).
+        fov_z
+            Field of view in partition direction in meters. Required if n_partitions > 1.
         n_readout
             Number of readout points.
         n_phase_encoding
             Number of phase encoding points.
+        n_partitions
+            Number of partitions (kz encoding steps). Values > 1 enable 3D encoding.
         bandwidth
             Total receiver bandwidth in Hz.
         oversampling
@@ -182,6 +234,9 @@ class EpiReadout:
             Readout type ('flyback' or 'symmetric').
         partial_fourier_factor
             Partial Fourier factor (0.5 to 1.0).
+        partial_fourier_factor_z
+            Partial Fourier factor in partition direction (0.5 to 1.0). The actual value may deviate
+            from the requested one. Requires n_partitions > 1.
         adc_freq_offset
             Frequency offset for the ADC.
         pe_enable
@@ -191,6 +246,14 @@ class EpiReadout:
         """
         if not 0.5 < partial_fourier_factor <= 1.0:
             raise ValueError('Desired partial Fourier factor must be larger than 0.5 and smaller or equal to 1.0.')
+        if not 0.5 < partial_fourier_factor_z <= 1.0:
+            raise ValueError('Desired partial Fourier factor must be larger than 0.5 and smaller or equal to 1.0.')
+        if n_partitions == 1 and partial_fourier_factor_z != 1.0:
+            raise ValueError('Partial Fourier along kz requires n_partitions > 1.')
+        if n_partitions < 1:
+            raise ValueError('Number of partitions must be at least 1.')
+        if n_partitions > 1 and fov_z is None:
+            raise ValueError('fov_z must be provided if n_partitions > 1.')
 
         # set system to default if not provided
         if system is None:
@@ -198,13 +261,16 @@ class EpiReadout:
 
         self.system = system
         self.fov = fov
+        self.fov_z = fov_z
         self.n_readout = n_readout
         self.n_phase_encoding = n_phase_encoding
+        self.n_partitions = n_partitions
         self.bandwidth = bandwidth
         self.oversampling = oversampling
         self.ramp_sampling = ramp_sampling
         self.readout_type = readout_type
         self.partial_fourier_factor = partial_fourier_factor
+        self.partial_fourier_factor_z = partial_fourier_factor_z
         self.adc_freq_offset = adc_freq_offset
         self.pe_enable = pe_enable
         self.spoiling_enable = spoiling_enable
@@ -214,11 +280,43 @@ class EpiReadout:
         delta_kx = 1 / (fov * oversampling)
         delta_ky = 1 / fov
 
+        # Partition (kz) encoding, mirroring the ky convention
+        if n_partitions > 1:
+            assert fov_z is not None
+            self.n_partitions_post_center = int(np.ceil(n_partitions / 2 + 1))
+            n_pre_full = n_partitions - self.n_partitions_post_center
+            # closest number of partitions to the desired partial fourier factor,
+            # at least one before the center if available
+            self.n_partitions_pre_center = int(
+                np.clip(
+                    np.ceil(partial_fourier_factor_z * n_partitions) - self.n_partitions_post_center,
+                    min(1, n_pre_full),
+                    n_pre_full,
+                )
+            )
+            delta_kz = 1 / fov_z
+        else:
+            self.n_partitions_post_center = 1
+            self.n_partitions_pre_center = 0
+            delta_kz = 0.0
+        self.n_partitions_total = self.n_partitions_pre_center + self.n_partitions_post_center
+        if n_partitions > 1:
+            actual_pf_factor_z = self.n_partitions_total / n_partitions
+            if actual_pf_factor_z != partial_fourier_factor_z:
+                print(
+                    f'Adjusted partial Fourier factor along kz from {partial_fourier_factor_z} '
+                    f'to {actual_pf_factor_z:.2f}.'
+                )
+                self.partial_fourier_factor_z = actual_pf_factor_z
+        self.kz_areas = (np.arange(self.n_partitions_total) - self.n_partitions_pre_center) * delta_kz
+        self.trajectory_dimensions = 3 if n_partitions > 1 else 2
+
         # Initiate all optional gradients as None
         self.gx_flyback = None
         self.gy_blipdown = None
         self.gy_blipup = None
         self.gy_blipdownup = None
+        self.gz_pre = None
         self.gz_spoil = None
 
         # Create blip gradient with shortest possible timing
@@ -304,7 +402,15 @@ class EpiReadout:
             system=self.system,
             area=-self.n_phase_enc_pre_center * delta_ky,
         )
-        self.gx_pre, self.gy_pre = pp.align(right=[self.gx_pre, self.gy_pre])
+        if self.trajectory_dimensions == 3:
+            self.gz_pre = pp.make_trapezoid(
+                channel='z',
+                system=self.system,
+                area=float(np.max(np.abs(self.kz_areas))),
+            )
+            self.gx_pre, self.gy_pre, self.gz_pre = pp.align(right=[self.gx_pre, self.gy_pre, self.gz_pre])
+        else:
+            self.gx_pre, self.gy_pre = pp.align(right=[self.gx_pre, self.gy_pre])
 
         # Create and align "phase encoding" gradients
         if self.readout_type == 'flyback':
@@ -332,14 +438,27 @@ class EpiReadout:
                 self.gy_blip.waveform *= 0
 
         # Create spoiler gradient
-        if self.spoiling_enable:
-            self.gz_spoil = pp.make_trapezoid(channel='z', system=self.system, area=4 * delta_ky * n_readout)
+        self.spoil_area = 4 * delta_ky * n_readout if self.spoiling_enable else 0.0
+        if self.trajectory_dimensions == 3:
+            # kz rewinder merged with spoiler; always needed in 3D to rewind the partition encoding
+            self.gz_spoil = pp.make_trapezoid(
+                channel='z',
+                system=self.system,
+                area=self.spoil_area + float(np.max(np.abs(self.kz_areas))),
+            )
+        elif self.spoiling_enable:
+            self.gz_spoil = pp.make_trapezoid(channel='z', system=self.system, area=self.spoil_area)
+
+    @property
+    def prephaser_duration(self) -> float:
+        """Return duration of the pre-phaser gradients."""
+        return float(pp.calc_duration(*[g for g in (self.gx_pre, self.gy_pre, self.gz_pre) if g is not None]))
 
     @property
     def time_to_center(self) -> float:
         """Return time from beginning of readout to center of k-space (needed for TE calculations)."""
         # i) add time for pre phaser
-        time_to_center = pp.calc_duration(self.gx_pre, self.gy_pre)
+        time_to_center = self.prephaser_duration
         # ii) add time for completed k-space lines before central (ky = 0) line
         if self.readout_type == 'flyback':
             time_to_center += self.n_phase_enc_pre_center * (
@@ -360,12 +479,12 @@ class EpiReadout:
     @property
     def time_to_center_without_prephaser(self) -> float:
         """Return time from after pre-phasers to center of k-space (needed for TE calculations)."""
-        return self.time_to_center - pp.calc_duration(self.gx_pre, self.gy_pre)
+        return self.time_to_center - self.prephaser_duration
 
     @property
     def total_duration(self) -> float:
         """Return total duration of readout including pre-phaser and optional spoiler."""
-        total_duration = pp.calc_duration(self.gx_pre, self.gy_pre)
+        total_duration = self.prephaser_duration
         if self.readout_type == 'flyback':
             total_duration += self.n_phase_enc_total * (
                 pp.calc_duration(self.gx) + pp.calc_duration(self.gx_flyback, self.gy_blip)
@@ -373,8 +492,8 @@ class EpiReadout:
             total_duration -= pp.calc_duration(self.gx_flyback, self.gy_blip)
         elif self.readout_type == 'symmetric':
             total_duration += self.n_phase_enc_total * pp.calc_duration(self.gx)
-        # add time for spoiler if enabled
-        if self.spoiling_enable:
+        # add time for end-of-readout z gradient (spoiler / kz rewinder)
+        if self.gz_spoil is not None:
             total_duration += pp.calc_duration(self.gz_spoil)
 
         return float(total_duration)
@@ -382,7 +501,32 @@ class EpiReadout:
     @property
     def total_duration_without_prephaser(self) -> float:
         """Return total duration of readout excluding pre-phasers but including optional spoiler."""
-        return self.total_duration - pp.calc_duration(self.gx_pre, self.gy_pre)
+        return self.total_duration - self.prephaser_duration
+
+    def gz_pre_for_partition(self, partition_idx: int):
+        """Return the kz pre-phaser gradient for a given partition.
+
+        Parameters
+        ----------
+        partition_idx
+            Partition index (0-based).
+        """
+        if self.gz_pre is None:
+            return None
+        return pp.scale_grad(self.gz_pre, self.kz_areas[partition_idx] / self.gz_pre.area)
+
+    def gz_post_for_partition(self, partition_idx: int):
+        """Return the end-of-readout z gradient (kz rewinder + spoiler) for a given partition.
+
+        Parameters
+        ----------
+        partition_idx
+            Partition index (0-based).
+        """
+        if self.trajectory_dimensions == 2:
+            return self.gz_spoil
+        assert self.gz_spoil is not None
+        return pp.scale_grad(self.gz_spoil, (self.spoil_area - self.kz_areas[partition_idx]) / self.gz_spoil.area)
 
     def _readout_block_kxy(
         self,
@@ -652,14 +796,14 @@ class EpiReadout:
             # Write navigator trajectory to MRD
             if mrd_dataset is not None:
                 n_samples = self.adc.num_samples
-                traj = np.zeros((n_samples, 2), dtype=np.float32)
+                traj = np.zeros((n_samples, self.trajectory_dimensions), dtype=np.float32)
                 if gx_sign > 0:
                     nav_kx = nav_kx_offset + nav_kx_forward
                 else:
                     nav_kx = nav_kx_offset - nav_kx_forward
                 traj[:, 0] = nav_kx * self.fov * self.oversampling
                 acq = ismrmrd.Acquisition()
-                acq.resize(trajectory_dimensions=2, number_of_samples=n_samples)
+                acq.resize(trajectory_dimensions=self.trajectory_dimensions, number_of_samples=n_samples)
                 acq.traj[:] = traj
                 mrd_dataset.append_acquisition(acq)
 
@@ -673,14 +817,23 @@ class EpiReadout:
         seq: pp.Sequence,
         add_prephaser: bool = True,
         mrd_dataset: ismrmrd.Dataset | None = None,
+        partition_idx: int | None = None,
     ) -> tuple[pp.Sequence, ismrmrd.Dataset | None]:
         """Add EPI readout blocks to the sequence.
 
         If `mrd_dataset` is provided, the analytical k-space trajectory is
         computed and written to the MRD file for each readout line.
         """
-        # (Re)set phase encoding (LIN) label
+        if partition_idx is None:
+            partition_idx = 0
+        if not 0 <= partition_idx < self.n_partitions_total:
+            raise ValueError(f'partition_idx must be in [0, {self.n_partitions_total}), got {partition_idx}.')
+
+        # (Re)set phase encoding (LIN) and partition encoding (PAR) labels
         lin_label = pp.make_label(label='LIN', type='SET', value=0)
+        par_labels = (
+            [pp.make_label(label='PAR', type='SET', value=partition_idx)] if self.trajectory_dimensions == 3 else []
+        )
 
         # Compute analytical trajectory for MRD writing
         if mrd_dataset is not None:
@@ -688,7 +841,10 @@ class EpiReadout:
 
         # Add pre-phaser gradients if enabled
         if add_prephaser:
-            seq.add_block(self.gx_pre, self.gy_pre)
+            if self.gz_pre is not None:
+                seq.add_block(self.gx_pre, self.gy_pre, self.gz_pre_for_partition(partition_idx))
+            else:
+                seq.add_block(self.gx_pre, self.gy_pre)
 
         for pe_idx in range(self.n_phase_enc_total):
             if self.readout_type == 'symmetric':
@@ -704,38 +860,65 @@ class EpiReadout:
                 gx_scale = -1 if np.mod(pe_idx, 2) else 1
                 rev_label = pp.make_label(type='SET', label='REV', value=gx_scale == -1)
                 seg_label = pp.make_label(type='SET', label='SEG', value=gx_scale == -1)
-                seq.add_block(pp.scale_grad(self.gx, gx_scale), gy_blip, self.adc, lin_label, rev_label, seg_label)
+                seq.add_block(
+                    pp.scale_grad(self.gx, gx_scale),
+                    gy_blip,
+                    self.adc,
+                    lin_label,
+                    rev_label,
+                    seg_label,
+                    *(par_labels if pe_idx == 0 else []),
+                )
 
             elif self.readout_type == 'flyback':
                 rev_label = pp.make_label(type='SET', label='REV', value=0)
                 seg_label = pp.make_label(type='SET', label='SEG', value=0)
-                seq.add_block(self.gx, self.adc, lin_label, rev_label, seg_label)
+                seq.add_block(
+                    self.gx,
+                    self.adc,
+                    lin_label,
+                    rev_label,
+                    seg_label,
+                    *(par_labels if pe_idx == 0 else []),
+                )
                 if pe_idx != self.n_phase_enc_total - 1:
                     seq.add_block(self.gx_flyback, self.gy_blip)
 
             # Write per-readout trajectory to MRD
             if mrd_dataset is not None:
                 n_samples = self.adc.num_samples
-                traj = np.zeros((n_samples, 2), dtype=np.float32)
+                traj = np.zeros((n_samples, self.trajectory_dimensions), dtype=np.float32)
                 traj[:, 0] = kx_traj[pe_idx] * self.fov * self.oversampling
                 traj[:, 1] = ky_traj[pe_idx] * self.fov
+                if self.trajectory_dimensions == 3:
+                    traj[:, 2] = self.kz_areas[partition_idx] * self.fov_z
 
                 acq = ismrmrd.Acquisition()
-                acq.resize(trajectory_dimensions=2, number_of_samples=n_samples)
+                acq.resize(trajectory_dimensions=self.trajectory_dimensions, number_of_samples=n_samples)
                 acq.traj[:] = traj
                 mrd_dataset.append_acquisition(acq)
 
             lin_label = pp.make_label(label='LIN', type='INC', value=1)
 
-        if self.spoiling_enable:
-            seq.add_block(self.gz_spoil)
+        gz_post = self.gz_post_for_partition(partition_idx)
+        if gz_post is not None:
+            seq.add_block(gz_post)
 
         return seq, mrd_dataset
 
-    def plot_sequence(self):
-        """Plot the sequence."""
+    def plot_sequence(self, partition_idx: int | None = None):
+        """Plot the sequence.
+
+        Parameters
+        ----------
+        partition_idx
+            Partition index for which to plot the sequence. Defaults to the
+            center partition.
+        """
+        if partition_idx is None:
+            partition_idx = self.n_partitions_pre_center
         seq = pp.Sequence(self.system)
-        seq, _ = self.add_to_seq(seq)
+        seq, _ = self.add_to_seq(seq, partition_idx=partition_idx)
         _, axs1, _, axs2 = seq.plot(grad_disp='mT/m', plot_now=False)
         # add vertical line at time to center to all plots in both figures
         for ax in axs1 + axs2:
