@@ -10,3 +10,6 @@ GOLDEN_ANGLE_HALF_CIRCLE = 0.618034 * np.pi
 
 # Golden ratio for the full circle.
 GOLDEN_ANGLE_FULL_CIRCLE = 0.381966 * 2 * np.pi
+
+# 3D golden means (Chan et al., MRM 2009) for 3D radial sampling.
+GOLDEN_MEANS_3D = (0.4656, 0.6823)

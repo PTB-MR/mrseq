@@ -4,6 +4,7 @@ chapters:
 - file: imaging.md
   sections:
   - file: radial_flash
+  - file: radial3d_flash
   - file: spiral_flash
   - file: epi2d
   - file: grpe_flash_dixon
