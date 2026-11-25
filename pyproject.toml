@@ -43,6 +43,7 @@ dependencies = [
     "matplotlib<4.0",
     "pypulseq>=1.4.1",
     "ismrmrd>=1.14.1",
+    "raw2ismrmrd>=0.260630",
 ]
 
 [project.optional-dependencies]
@@ -54,8 +55,8 @@ tests = [
     "pytest-cov",
     "pytest-xdist",
 ]
-examples = ["mrzerocore>=0.4.3", "mrpro", "cmap", "jupyter-book<2.0"]
-dev = ["mrseq[tests, examples]"]
+examples = ["mrzerocore>=1.0.5", "mrpro", "cmap"]
+dev = ["mrseq[tests, examples]", "jupyter-book<2.0"]
 
 [project.urls]
 "repository" = "https://github.com/PTB-MR/mrseq"
@@ -66,6 +67,7 @@ testpaths = ["tests"]
 filterwarnings = [
     "error",
     'ignore:WARNING! The sequence in memory uses "soft delay" extension, which is incompatible with the file format v1.4.1',
+    "ignore:Due to '_pack_'.*:DeprecationWarning",
 ]
 
 [tool.ruff]
@@ -137,5 +139,5 @@ warn_unused_ignores = true
 
 
 [[tool.mypy.overrides]]
-module = ["ismrmrd.*", "pypulseq.*"]
+module = ["ismrmrd.*", "pypulseq.*", "raw2ismrmrd.*"]
 ignore_missing_imports = true
