@@ -15,7 +15,7 @@ DEFAULT_KWARGS: dict[str, Any] = {
     'timing_check': False,
 }
 
-EXPECTED_DUR = 0.98338  # defined 2026-11-24
+EXPECTED_DUR = 0.97108  # defined 2026-11-25 (PyPulseq 1.5.0.post2)
 
 
 def test_default_seq_duration(system_defaults):
