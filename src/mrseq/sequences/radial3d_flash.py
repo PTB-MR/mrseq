@@ -40,7 +40,7 @@ def radial3d_flash_kernel(
     rf_bwt: float,
     rf_apodization: float,
     rf_spoiling_phase_increment: float,
-    gz_spoil_duration: float,
+    gz_spoil_duration: float | None,
     gz_spoil_area: float,
     mrd_header_file: str | Path | None,
 ) -> tuple[pp.Sequence, float, float]:
@@ -90,7 +90,7 @@ def radial3d_flash_kernel(
     rf_spoiling_phase_increment
         RF spoiling phase increment (in degrees). Set to 0 for no RF spoiling.
     gz_spoil_duration
-        Duration of spoiler gradient (in seconds)
+        Duration of spoiler gradient (in seconds). Set to None for minimum duration.
     gz_spoil_area
         Area of spoiler gradient (in 1/m). Set to 0 for no spoiler gradient.
     mrd_header_file
