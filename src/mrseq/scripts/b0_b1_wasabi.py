@@ -4,13 +4,13 @@ from pathlib import Path
 
 import numpy as np
 import pypulseq as pp
+from mrseq.utils.trajectory import cartesian_phase_encoding
 
 from mrseq.utils import find_gx_flat_time_on_adc_raster
 from mrseq.utils import round_to_raster
 from mrseq.utils import sys_defaults
 from mrseq.utils import write_sequence
 from mrseq.utils.constants import GYROMAGNETIC_RATIO_PROTON
-from mrseq.utils.trajectory import cartesian_phase_encoding
 
 
 def wasabi_gre_centric_kernel(
